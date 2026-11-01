@@ -96,6 +96,9 @@ export function createPayer() {
     // and the answer comes back in the Intent's own shape whichever miner serves it.
     askIntent: (intent: string, params: Record<string, string>, query?: string) =>
       post("/engine/v1/ask", query ? { intent, params, query } : { intent, params }),
+    // Canonical ask to one named miner: no routing, no fallback. An incompatible miner is refused before payment.
+    askIntentAt: (minerId: string, intent: string, params: Record<string, string>) =>
+      post(`/engine/v1/ask/${minerId}`, { intent, params }),
     // Direct: a specific miner and endpoint from its YAML.
     askMiner: (minerId: string, method: string, endpoint: string, payload: object) =>
       post(`/engine/v1/ask/${minerId}`, { method, endpoint, payload }),

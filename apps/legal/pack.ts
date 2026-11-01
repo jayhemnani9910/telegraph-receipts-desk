@@ -3,13 +3,24 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { config } from "../../src/config.ts";
 import type { createPayer } from "../../src/telegraph.ts";
 import { buyChecked, type CheckSpec, type Item } from "../../src/evidence.ts";
-import { flagValue, listValue, MATCH_LIST_KEYS, mentions, SANCTIONED_KEYS, texts } from "../../src/answers.ts";
+import { flagValue, listValue, MATCH_LIST_KEYS, mentions, numberValue, SANCTIONED_KEYS, texts } from "../../src/answers.ts";
 import { edgarLatestAnnual, gleifLookup, ofacScreen } from "../../src/primary.ts";
 import { renderPack } from "./render.ts";
 
 export type EntityPack = { name: string; kind: "company" | "person"; items: Item[] };
 
 const LEI_PATTERN = /\b[A-Z0-9]{18}[0-9]{2}\b/;
+
+// Miners asked directly before the routed ask, checked on 2026-11-01: on V2 routing these Intents often reached
+// miners that could not answer. IDs can change; a miner that is gone or cannot take the request costs nothing.
+const SANCTIONS_MINERS = ["4433", "78003"]; // LiveCert, OFAC SDN XML
+const REGISTRY_MINERS = ["7393"]; // DataWire Corporate Registry Lookup
+
+// V2 sometimes drops the yes/no but keeps the match score.
+const scoreSaysMatch = (answer: unknown) => {
+  const score = numberValue(answer, ["match_score"]);
+  return score === null ? null : score >= 0.9 ? true : score <= 0.5 ? false : null;
+};
 
 async function diligence(payer: ReturnType<typeof createPayer>, input: string): Promise<EntityPack> {
   const buy = (spec: CheckSpec) => buyChecked(payer, "diligence", spec);
@@ -31,13 +42,14 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
       intent: "SANCTIONS_SCREENING_MATCH_GENERAL",
       query: `Is ${name} on the OFAC SDN sanctions list?`,
       params: { name },
+      miners: SANCTIONS_MINERS,
       primary: ofac,
       finding: listed
         ? `Listed: ${ofac.value.map((m) => `#${m.entNum} ${m.name} (${m.programs})`).join("; ")}`
         : "No match on the SDN list or its aliases.",
       limits: "US OFAC SDN only (not UN, EU, UK). Exact word match on names and aliases; spelling variants and transliterations can be missed.",
       compare: (answer) => {
-        const said = flagValue(answer, SANCTIONED_KEYS) ?? listValue(answer, MATCH_LIST_KEYS);
+        const said = flagValue(answer, SANCTIONED_KEYS) ?? listValue(answer, MATCH_LIST_KEYS) ?? scoreSaysMatch(answer);
         return said === null ? "unconfirmed" : said === listed ? "confirmed" : "contradicted";
       },
     }),
@@ -51,6 +63,7 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
         intent: "CORPORATE_REGISTRY_LOOKUP_GENERAL",
         query: `Look up ${name} in the GLEIF LEI registry. What is its LEI code and jurisdiction?`,
         params: { company: name, jurisdiction: reg?.jurisdiction ?? "US" },
+        miners: REGISTRY_MINERS,
         primary: lei,
         finding: reg
           ? `LEI ${reg.lei}, ${reg.legalName}, jurisdiction ${reg.jurisdiction}${reg.registeredAs ? `, company number ${reg.registeredAs}` : ""}, entity ${reg.entityStatus}, registration ${reg.registrationStatus} (updated ${reg.lastUpdate.slice(0, 10)}).`

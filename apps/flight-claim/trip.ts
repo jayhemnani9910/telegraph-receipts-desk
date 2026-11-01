@@ -29,6 +29,10 @@ export type Trip = {
 
 export type Assessment = { eligible: boolean; reason: string; changeHours: number; thresholdHours: number };
 
+// Asked directly before the routed ask (checked 2026-11-01: routing picked an aircraft-traffic feed, and the
+// FAA-based miners failed upstream). A miner that is gone or cannot take the request costs nothing.
+const TRAVEL_MINERS = ["7602"]; // TravelWire Travel Disruption
+
 const REQUIRED = ["passenger", "email", "airline", "airlineEmail", "flight", "booking", "from", "to", "scheduledDeparture", "fare", "currency"] as const;
 
 export const readTrip = (path: string): Trip => validTrip(JSON.parse(readFileSync(path, "utf8")));
@@ -74,6 +78,7 @@ export async function draftClaim(payer: ReturnType<typeof createPayer>, trip: Tr
         intent: "TRAVEL_DISRUPTION_GENERAL",
         query: `Is air travel disrupted at ${code} airport right now?`,
         params: { route_or_flight: code },
+        miners: TRAVEL_MINERS,
         primary: faa,
         finding: events.length
           ? events.map((e) => `${e.type}: ${e.reason}${e.detail ? ` (${e.detail})` : ""}`).join("; ") + (disrupted ? "" : ". General aviation only; airline flights not affected.")

@@ -16,6 +16,7 @@ export type Item = {
   limits: string;
   query: string;
   params?: Record<string, string>;
+  miners?: string[];
   agreement: Agreement;
   network: {
     status: number;
@@ -27,6 +28,8 @@ export type Item = {
     charged: boolean;
     at: string;
   };
+  // Earlier attempts that failed before the one above answered (or the last one failed).
+  failedAttempts: { miner: string; status: number; charged: boolean; txHash: string | null; at: string }[];
 };
 
 export type CheckSpec = {
@@ -35,22 +38,42 @@ export type CheckSpec = {
   query: string;
   // With params the call names the Intent and its typed inputs (V2 canonical ask); without, the query is routed.
   params?: Record<string, string>;
+  // Miners to ask directly first, best first. The routed ask is the fallback.
+  miners?: string[];
   primary: Sourced<unknown>;
   finding: string;
   limits: string;
   compare: (answer: unknown, query: string) => Agreement;
 };
 
-export async function buyChecked(payer: ReturnType<typeof createPayer>, label: string, spec: CheckSpec): Promise<Item> {
-  const at = new Date().toISOString();
-  let result: AskResult;
+// Failed calls can still be charged, so stop trying other miners after this many charged failures.
+const MAX_CHARGED_FAILURES = 2;
+
+const attempt = async (payer: ReturnType<typeof createPayer>, spec: CheckSpec, miner: string | null): Promise<AskResult> => {
   try {
-    result = await (spec.params ? payer.askIntent(spec.intent, spec.params, spec.query) : payer.ask(spec.query));
+    if (miner && spec.params) return await payer.askIntentAt(miner, spec.intent, spec.params);
+    return await (spec.params ? payer.askIntent(spec.intent, spec.params, spec.query) : payer.ask(spec.query));
   } catch (err) {
     // Spend cap hit or payment refused before anything was paid.
-    result = { status: 0, body: { error: (err as Error).message }, receipt: null, payment: null, durationMs: 0 };
+    return { status: 0, body: { error: (err as Error).message }, receipt: null, payment: null, durationMs: 0 };
   }
-  const entry = record(`${label}:${spec.intent}`, spec.query, result);
+};
+
+export async function buyChecked(payer: ReturnType<typeof createPayer>, label: string, spec: CheckSpec): Promise<Item> {
+  const failedAttempts: Item["failedAttempts"] = [];
+  // Routing on V2 often picks a miner that cannot answer, so named miners go first; a miner that cannot
+  // take the request is refused before payment and costs nothing.
+  const candidates = [...(spec.params ? (spec.miners ?? []) : []), null];
+  let at = new Date().toISOString();
+  let result = await attempt(payer, spec, candidates[0]);
+  let entry = record(`${label}:${spec.intent}`, spec.query, result);
+  for (const next of candidates.slice(1)) {
+    if (result.status === 200 || failedAttempts.filter((f) => f.charged).length + Number(entry.paid) >= MAX_CHARGED_FAILURES) break;
+    failedAttempts.push({ miner: candidates[failedAttempts.length] ?? "routed", status: result.status, charged: entry.paid, txHash: entry.tx_hash, at });
+    at = new Date().toISOString();
+    result = await attempt(payer, spec, next);
+    entry = record(`${label}:${spec.intent}`, spec.query, result);
+  }
   const answer = result.body?.result ?? result.body;
   const { compare, ...rest } = spec;
   return {
@@ -66,6 +89,7 @@ export async function buyChecked(payer: ReturnType<typeof createPayer>, label: s
       charged: entry.paid,
       at,
     },
+    failedAttempts,
   };
 }
 
@@ -73,7 +97,8 @@ export async function buyChecked(payer: ReturnType<typeof createPayer>, label: s
 export const settled = (items: Item[]) => items.reduce((s, i) => s + (i.network.charged ? BigInt(i.network.amountUusdc ?? 0) : 0n), 0n);
 
 // Failed calls that were still charged come back with no amount; count them so the total is not understated.
-export const chargedWithoutAmount = (items: Item[]) => items.filter((i) => i.network.charged && !i.network.amountUusdc).length;
+export const chargedWithoutAmount = (items: Item[]) =>
+  items.reduce((n, i) => n + Number(i.network.charged && !i.network.amountUusdc) + i.failedAttempts.filter((f) => f.charged).length, 0);
 
 export const spentNote = (items: Item[]) => {
   const n = chargedWithoutAmount(items);

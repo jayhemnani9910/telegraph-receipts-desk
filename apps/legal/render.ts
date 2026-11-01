@@ -10,7 +10,13 @@ export function renderPack(generatedAt: string, payer: string, entities: EntityP
   const items = entities.flatMap((e) => e.items.map((item) => ({ entity: e.name, item })));
   const total = items.reduce((s, { item }) => s + BigInt(item.network.amountUusdc ?? 0), 0n);
   const contradicted = items.filter(({ item }) => item.agreement === "contradicted");
-  const failedButCharged = items.filter(({ item }) => item.network.status !== 200 && item.network.charged);
+  // Every failed call that was still charged: the final answer and any earlier attempt on another miner.
+  const failedButCharged = items.flatMap(({ entity, item }) => [
+    ...item.failedAttempts.filter((f) => f.charged).map((f) => ({ entity, check: item.check, miner: f.miner, status: f.status, txHash: f.txHash })),
+    ...(item.network.status !== 200 && item.network.charged
+      ? [{ entity, check: item.check, miner: item.network.miner ?? "routed", status: item.network.status, txHash: item.network.txHash }]
+      : []),
+  ]);
 
   const out = [
     `# Diligence pack`,
@@ -44,7 +50,9 @@ export function renderPack(generatedAt: string, payer: string, entities: EntityP
   if (contradicted.length || failedButCharged.length) {
     out.push(``, `## Network issues found`, ``);
     for (const { entity, item } of contradicted) out.push(`- ${entity}, ${item.check}: ${item.network.miner} answered \`${cell(JSON.stringify(item.network.answer).slice(0, 200))}\`, which disagrees with the primary source.`);
-    for (const { entity, item } of failedButCharged) out.push(`- ${entity}, ${item.check}: HTTP ${item.network.status} but payment settled (${tx(item)}).`);
+    for (const f of failedButCharged) {
+      out.push(`- ${f.entity}, ${f.check} (miner ${f.miner}): HTTP ${f.status} but payment settled (${f.txHash ? `[tx](${config.explorerTxUrl}${f.txHash})` : "no tx hash"}).`);
+    }
   }
 
   out.push(``, `Machine-generated research for review, not legal advice. Verify the ledger against the chain with \`npm run reconcile\`.`, ``);

@@ -50,3 +50,9 @@ export const listValue = (result: unknown, keys: string[]): boolean | null => {
 };
 
 export const MATCH_LIST_KEYS = ["matches", "hits"];
+
+// First number under any of `keys`, or null.
+export const numberValue = (result: unknown, keys: string[]): number | null => {
+  const hit = leaves(result).find(([k, v]) => keys.includes(k.toLowerCase()) && typeof v === "number");
+  return hit ? (hit[1] as number) : null;
+};
