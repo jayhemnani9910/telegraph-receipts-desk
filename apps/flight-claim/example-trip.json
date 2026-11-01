@@ -1,0 +1,17 @@
+{
+  "passenger": "Alex Example",
+  "email": "alex@example.com",
+  "airline": "Example Air",
+  "airlineEmail": "refunds@example.com",
+  "flight": "EX123",
+  "booking": "ABC123",
+  "from": "LAS",
+  "to": "JFK",
+  "international": false,
+  "scheduledDeparture": "2026-10-23T08:00:00-07:00",
+  "revisedDeparture": "2026-10-23T11:45:00-07:00",
+  "cancelled": false,
+  "traveled": false,
+  "fare": "289.00",
+  "currency": "USD"
+}

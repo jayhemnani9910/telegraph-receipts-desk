@@ -1,0 +1,80 @@
+// One paid Telegraph answer, recorded in the ledger and compared with a primary source.
+import { config } from "./config.ts";
+import { record } from "./ledger.ts";
+import type { AskResult, createPayer } from "./telegraph.ts";
+import type { Sourced } from "./primary.ts";
+
+// confirmed: the paid answer agrees with the primary source; contradicted: it disagrees;
+// unconfirmed: it could not be compared; network failed: no usable answer was returned.
+export type Agreement = "confirmed" | "contradicted" | "unconfirmed" | "network failed";
+
+export type Item = {
+  check: string;
+  intent: string;
+  finding: string;
+  primary: Sourced<unknown>;
+  limits: string;
+  query: string;
+  params?: Record<string, string>;
+  agreement: Agreement;
+  network: {
+    status: number;
+    miner: string | null;
+    answer: unknown;
+    receiptHash: string | null;
+    txHash: string | null;
+    amountUusdc: string | null;
+    charged: boolean;
+    at: string;
+  };
+};
+
+export type CheckSpec = {
+  check: string;
+  intent: string;
+  query: string;
+  // With params the call names the Intent and its typed inputs (V2 canonical ask); without, the query is routed.
+  params?: Record<string, string>;
+  primary: Sourced<unknown>;
+  finding: string;
+  limits: string;
+  compare: (answer: unknown, query: string) => Agreement;
+};
+
+export async function buyChecked(payer: ReturnType<typeof createPayer>, label: string, spec: CheckSpec): Promise<Item> {
+  const at = new Date().toISOString();
+  let result: AskResult;
+  try {
+    result = await (spec.params ? payer.askIntent(spec.intent, spec.params, spec.query) : payer.ask(spec.query));
+  } catch (err) {
+    // Spend cap hit or payment refused before anything was paid.
+    result = { status: 0, body: { error: (err as Error).message }, receipt: null, payment: null, durationMs: 0 };
+  }
+  const entry = record(`${label}:${spec.intent}`, spec.query, result);
+  const answer = result.body?.result ?? result.body;
+  const { compare, ...rest } = spec;
+  return {
+    ...rest,
+    agreement: result.status === 200 ? compare(answer, spec.query) : "network failed",
+    network: {
+      status: result.status,
+      miner: result.body?.miner_name ?? entry.miner,
+      answer,
+      receiptHash: entry.receipt_hash,
+      txHash: entry.tx_hash,
+      amountUusdc: entry.amount_uusdc,
+      charged: entry.paid,
+      at,
+    },
+  };
+}
+
+// What actually settled: the payer's own counter also counts payments that were signed but refused.
+export const settled = (items: Item[]) => items.reduce((s, i) => s + (i.network.charged ? BigInt(i.network.amountUusdc ?? 0) : 0n), 0n);
+
+export const usd = (uusdc: bigint) => `$${(Number(uusdc) / 1e6).toFixed(2)}`;
+
+export const txUrl = (item: Item) => (item.network.txHash ? `${config.explorerTxUrl}${item.network.txHash}` : null);
+
+export const cost = (item: Item) =>
+  item.network.amountUusdc ? usd(BigInt(item.network.amountUusdc)) : item.network.charged ? "charged, amount not reported" : "$0.00";

@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Receipts Desk</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1da;
+    --accent: #2453c7; --accent-ink: #ffffff;
+    --ok: #1d7a46; --ok-bg: #e3f3e9; --bad: #b3261e; --bad-bg: #fbe5e3;
+    --warn: #8a5a00; --warn-bg: #fdf0d5; --none: #5f5e58; --none-bg: #ecebe6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f98; --line: #34332f;
+      --accent: #7c9cf0; --accent-ink: #10142a;
+      --ok: #7fd3a1; --ok-bg: #173324; --bad: #f2a29b; --bad-bg: #3d1c19;
+      --warn: #f0c46e; --warn-bg: #3a2d10; --none: #c4c3bc; --none-bg: #2c2b28;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  h1 { margin: 0; font-size: 24px; }
+  h2 { font-size: 17px; margin: 0 0 8px; }
+  .sub, .hint { color: var(--muted); }
+  .sub { margin: 4px 0 0; max-width: 560px; }
+  .hint { font-size: 13px; }
+  .wallet { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .wallet b { font-variant-numeric: tabular-nums; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  nav button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font: inherit; color: var(--muted); cursor: pointer; }
+  nav button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); }
+  input[type=text], textarea { width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+  textarea { min-height: 110px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
+  .checks label { display: flex; gap: 6px; align-items: center; color: var(--ink); font-size: 14px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  button.primary, button.secondary { border-radius: 8px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+  button.secondary { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: .55; cursor: wait; }
+  .msg { margin-top: 12px; padding: 10px 12px; border-radius: 8px; }
+  .msg.ok { background: var(--ok-bg); color: var(--ok); }
+  .msg.bad { background: var(--bad-bg); color: var(--bad); }
+  .msg.info { background: var(--none-bg); color: var(--ink); }
+  .table { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px; border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; border-top: 0; white-space: nowrap; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .badge.confirmed { background: var(--ok-bg); color: var(--ok); }
+  .badge.contradicted { background: var(--bad-bg); color: var(--bad); }
+  .badge.unconfirmed { background: var(--none-bg); color: var(--none); }
+  .badge.failed { background: var(--warn-bg); color: var(--warn); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  details pre { max-width: 360px; }
+  pre { white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 12.5px; margin: 8px 0 0; }
+  a { color: var(--accent); }
+  .summary { font-size: 15px; margin: 0 0 12px; }
+  .limits { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; padding-left: 18px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Receipts Desk</h1>
+      <p class="sub">Answers bought from Telegraph miners, checked against the primary source, each with its price and an on-chain receipt.</p>
+    </div>
+    <div class="wallet" id="wallet">Loading wallet…</div>
+  </header>
+
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="legal">Diligence pack</button>
+    <button role="tab" aria-selected="false" data-tab="flight">Flight refund</button>
+  </nav>
+
+  <div id="tab-legal">
+    <section class="panel">
+      <h2>Who are you checking?</h2>
+      <label for="names">One per line, up to 5. Start a line with <code>person:</code> for a person; companies use their exact legal name.</label>
+      <textarea id="names">Apple Inc.
+person:Vladimir Putin</textarea>
+      <p class="hint">Companies: sanctions, LEI registry and latest annual report. People: sanctions. Each check is bought for $0.01 and compared with OFAC, GLEIF or SEC EDGAR.</p>
+      <div class="actions">
+        <button class="primary" id="run-legal">Run checks</button>
+        <span class="hint" id="legal-estimate"></span>
+      </div>
+      <div id="legal-msg"></div>
+    </section>
+    <div id="legal-results"></div>
+  </div>
+
+  <div id="tab-flight" hidden>
+    <section class="panel">
+      <h2>Your trip</h2>
+      <p class="hint">Times in ISO 8601 with the airport's offset, e.g. <code>2026-10-23T08:00:00-07:00</code>. Only the airport codes are sent to the network; your name and booking stay on this computer.</p>
+      <div class="grid" id="trip-fields"></div>
+      <div class="checks">
+        <label><input type="checkbox" id="international"> International</label>
+        <label><input type="checkbox" id="cancelled"> Cancelled by the airline</label>
+        <label><input type="checkbox" id="traveled"> I took the flight</label>
+      </div>
+      <div class="actions">
+        <button class="secondary" id="check-flight">Check eligibility (free)</button>
+        <button class="primary" id="claim-flight" hidden>Buy evidence and draft claim</button>
+      </div>
+      <div id="flight-msg"></div>
+    </section>
+    <div id="flight-results"></div>
+  </div>
+</main>
+
+<script>
+const TRIP_FIELDS = [
+  ["passenger", "Passenger", "Alex Example"],
+  ["email", "Your email", "alex@example.com"],
+  ["airline", "Airline", "Example Air"],
+  ["airlineEmail", "Airline refunds email", "refunds@example.com"],
+  ["flight", "Flight", "EX123"],
+  ["booking", "Booking reference", "ABC123"],
+  ["from", "From (airport code)", "LAS"],
+  ["to", "To (airport code)", "JFK"],
+  ["scheduledDeparture", "Scheduled departure", "2026-10-23T08:00:00-07:00"],
+  ["revisedDeparture", "New departure", "2026-10-23T11:45:00-07:00"],
+  ["scheduledArrival", "Scheduled arrival", ""],
+  ["revisedArrival", "New arrival", ""],
+  ["fare", "Fare", "289.00"],
+  ["currency", "Currency", "USD"],
+];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const usd = (uusdc) => `$${(Number(uusdc || 0) / 1e6).toFixed(2)}`;
+let explorer = "";
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+const message = (el, kind, text) => { $(el).innerHTML = text ? `<div class="msg ${kind}">${text}</div>` : ""; };
+
+function download(name, text, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function loadWallet() {
+  try {
+    const w = await api("/api/wallet");
+    explorer = w.explorerTxUrl;
+    $("wallet").innerHTML = `Wallet <span class="mono">${esc(w.address.slice(0, 6))}…${esc(w.address.slice(-4))}</span> · <b>${Number(w.usdc).toFixed(2)}</b> test USDC · Ethereum Sepolia`;
+  } catch (err) {
+    $("wallet").textContent = `Wallet unavailable: ${err.message}`;
+  }
+}
+
+// Tabs
+document.querySelectorAll("nav button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach((x) => x.setAttribute("aria-selected", x === b));
+    $("tab-legal").hidden = b.dataset.tab !== "legal";
+    $("tab-flight").hidden = b.dataset.tab !== "flight";
+  }),
+);
+
+// Shared results table: one row per paid check.
+function checksTable(items, withSource) {
+  const rows = items.map((i) => {
+    const n = i.network;
+    const badge = i.agreement === "network failed" ? "failed" : i.agreement;
+    const said = n.status === 200 ? esc(n.miner) : `HTTP ${n.status}`;
+    const cost = n.amountUusdc ? usd(n.amountUusdc) : n.charged ? "charged" : "$0.00";
+    const proof = n.txHash ? `<a href="${esc(explorer + n.txHash)}" target="_blank" rel="noopener">tx</a>` : "none";
+    const receipt = n.receiptHash ? `<span class="mono" title="${esc(n.receiptHash)}">${esc(n.receiptHash.slice(0, 10))}…</span>` : "none";
+    return `<tr>
+      <td>${esc(i.check)}</td>
+      <td>${esc(i.finding)}</td>
+      ${withSource ? `<td><a href="${esc(i.primary.source)}" target="_blank" rel="noopener">source</a><br><span class="hint">${esc(i.primary.asOf.slice(0, 16).replace("T", " "))}</span></td>` : ""}
+      <td><span class="badge ${badge}">${esc(i.agreement)}</span><br><span class="hint">${said}</span>
+        <details><summary>answer</summary><pre>${esc(JSON.stringify(n.answer, null, 2))}</pre></details></td>
+      <td>${cost}</td>
+      <td>${receipt}<br>${proof}</td>
+    </tr>`;
+  });
+  return `<div class="table"><table>
+    <tr><th>Check</th><th>Primary source finding</th>${withSource ? "<th>Source</th>" : ""}<th>Network answer</th><th>Cost</th><th>Receipt</th></tr>
+    ${rows.join("")}
+  </table></div>
+  <ul class="limits">${items.map((i) => `<li>${esc(i.check)}: ${esc(i.limits)}</li>`).join("")}</ul>`;
+}
+
+// Diligence
+const names = () => $("names").value.split("\n").map((s) => s.trim()).filter(Boolean);
+function estimate() {
+  const n = names();
+  const checks = n.reduce((s, x) => s + (x.startsWith("person:") ? 1 : 3), 0);
+  $("legal-estimate").textContent = n.length ? `Up to ${checks} checks, about ${usd(checks * 10000)}` : "";
+}
+$("names").addEventListener("input", estimate);
+estimate();
+
+$("run-legal").addEventListener("click", async () => {
+  const button = $("run-legal");
+  button.disabled = true;
+  message("legal-msg", "info", "Buying answers and checking sources. This takes 10 to 60 seconds.");
+  $("legal-results").innerHTML = "";
+  try {
+    const r = await api("/api/diligence", { names: names() });
+    const items = r.entities.flatMap((e) => e.items);
+    const contradicted = items.filter((i) => i.agreement === "contradicted").length;
+    message("legal-msg", contradicted ? "bad" : "ok",
+      `${r.entities.length} ${r.entities.length === 1 ? "entity" : "entities"}, ${items.length} paid checks, ${usd(r.spent)} spent. ${contradicted} network ${contradicted === 1 ? "answer" : "answers"} contradicted the primary source.`);
+    $("legal-results").innerHTML =
+      r.entities.map((e) => `<section class="panel"><h2>${esc(e.name)} <span class="hint">(${esc(e.kind)})</span></h2>${checksTable(e.items, true)}</section>`).join("") +
+      `<section class="panel"><div class="actions" style="margin:0"><button class="secondary" id="dl-pack">Download pack (Markdown)</button><span class="hint">Saved locally in <code>${esc(r.dir)}</code></span></div></section>`;
+    $("dl-pack").addEventListener("click", () => download("diligence-pack.md", r.markdown, "text/markdown"));
+    loadWallet();
+  } catch (err) {
+    message("legal-msg", "bad", esc(err.message));
+  } finally {
+    button.disabled = false;
+  }
+});
+
+// Flight
+$("trip-fields").innerHTML = TRIP_FIELDS.map(([k, label, value]) =>
+  `<label>${esc(label)}<input type="text" id="f-${k}" value="${esc(value)}"></label>`).join("");
+
+function trip() {
+  const t = Object.fromEntries(TRIP_FIELDS.map(([k]) => [k, $(`f-${k}`).value.trim()]).filter(([, v]) => v));
+  for (const k of ["international", "cancelled", "traveled"]) t[k] = $(k).checked;
+  return t;
+}
+
+// Any edit invalidates the last eligibility result.
+document.querySelectorAll("#tab-flight input").forEach((el) => el.addEventListener("input", () => {
+  $("claim-flight").hidden = true;
+  message("flight-msg");
+}));
+
+$("check-flight").addEventListener("click", async () => {
+  $("flight-results").innerHTML = "";
+  try {
+    const { assessment } = await api("/api/flight/check", { trip: trip() });
+    message("flight-msg", assessment.eligible ? "ok" : "info",
+      esc(assessment.reason) + (assessment.eligible ? " You can claim a refund. Drafting buys one disruption check per airport, $0.01 each." : " No claim to draft."));
+    $("claim-flight").hidden = !assessment.eligible;
+  } catch (err) {
+    message("flight-msg", "bad", esc(err.message));
+  }
+});
+
+$("claim-flight").addEventListener("click", async () => {
+  const button = $("claim-flight");
+  button.disabled = true;
+  message("flight-msg", "info", "Buying airport disruption checks and drafting the claim.");
+  try {
+    const r = await api("/api/flight/claim", { trip: trip() });
+    message("flight-msg", "ok", `Claim drafted, ${usd(r.spent)} spent. Nothing was sent: review it, then send it from your own email.`);
+    $("flight-results").innerHTML = `
+      <section class="panel"><h2>Airport checks against the FAA feed</h2>${checksTable(r.items, false)}</section>
+      <section class="panel"><h2>Draft email</h2>
+        <pre>${esc(r.email.replace(/\r/g, ""))}</pre>
+        <div class="actions"><button class="primary" id="dl-eml">Download claim.eml</button><button class="secondary" id="dl-report">Download evidence (Markdown)</button>
+        <span class="hint">Saved locally in <code>${esc(r.dir)}</code></span></div>
+      </section>`;
+    $("dl-eml").addEventListener("click", () => download("claim.eml", r.email, "message/rfc822"));
+    $("dl-report").addEventListener("click", () => download("claim-evidence.md", r.report, "text/markdown"));
+    loadWallet();
+  } catch (err) {
+    message("flight-msg", "bad", esc(err.message));
+  } finally {
+    button.disabled = false;
+  }
+});
+
+loadWallet();
+</script>
+</body>
+</html>

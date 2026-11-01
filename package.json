@@ -1,0 +1,29 @@
+{
+  "name": "receipts-desk",
+  "version": "1.0.0",
+  "scripts": {
+    "wallet:new": "tsx scripts/new-wallet.ts",
+    "balance": "tsx scripts/balance.ts",
+    "mint": "tsx scripts/mint.ts",
+    "rankings": "tsx scripts/rankings.ts",
+    "probe": "tsx probe/run.ts",
+    "typecheck": "tsc",
+    "reconcile": "tsx scripts/reconcile.ts",
+    "diligence": "tsx apps/legal/diligence.ts",
+    "flight-claim": "tsx apps/flight-claim/claim.ts",
+    "flight-watch": "tsx apps/flight-claim/watch.ts",
+    "web": "tsx web/server.ts"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@x402/evm": "^2.28.0",
+    "@x402/fetch": "^2.28.0",
+    "viem": "^2.57.10"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
