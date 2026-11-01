@@ -140,6 +140,7 @@ const TRIP_FIELDS = [
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const usd = (uusdc) => `$${(Number(uusdc || 0) / 1e6).toFixed(2)}`;
+const failedCharges = (n) => (n ? `, plus ${n} failed ${n === 1 ? "call" : "calls"} charged with no amount reported` : "");
 let explorer = "";
 
 async function api(path, body) {
@@ -224,7 +225,7 @@ $("run-legal").addEventListener("click", async () => {
     const items = r.entities.flatMap((e) => e.items);
     const contradicted = items.filter((i) => i.agreement === "contradicted").length;
     message("legal-msg", contradicted ? "bad" : "ok",
-      `${r.entities.length} ${r.entities.length === 1 ? "entity" : "entities"}, ${items.length} paid checks, ${usd(r.spent)} spent. ${contradicted} network ${contradicted === 1 ? "answer" : "answers"} contradicted the primary source.`);
+      `${r.entities.length} ${r.entities.length === 1 ? "entity" : "entities"}, ${items.length} paid checks, ${usd(r.spent)} spent${failedCharges(r.chargedWithoutAmount)}. ${contradicted} network ${contradicted === 1 ? "answer" : "answers"} contradicted the primary source.`);
     $("legal-results").innerHTML =
       r.entities.map((e) => `<section class="panel"><h2>${esc(e.name)} <span class="hint">(${esc(e.kind)})</span></h2>${checksTable(e.items, true)}</section>`).join("") +
       `<section class="panel"><div class="actions" style="margin:0"><button class="secondary" id="dl-pack">Download pack (Markdown)</button><span class="hint">Saved locally in <code>${esc(r.dir)}</code></span></div></section>`;
@@ -271,7 +272,7 @@ $("claim-flight").addEventListener("click", async () => {
   message("flight-msg", "info", "Buying airport disruption checks and drafting the claim.");
   try {
     const r = await api("/api/flight/claim", { trip: trip() });
-    message("flight-msg", "ok", `Claim drafted, ${usd(r.spent)} spent. Nothing was sent: review it, then send it from your own email.`);
+    message("flight-msg", "ok", `Claim drafted, ${usd(r.spent)} spent${failedCharges(r.chargedWithoutAmount)}. Nothing was sent: review it, then send it from your own email.`);
     $("flight-results").innerHTML = `
       <section class="panel"><h2>Airport checks against the FAA feed</h2>${checksTable(r.items, false)}</section>
       <section class="panel"><h2>Draft email</h2>

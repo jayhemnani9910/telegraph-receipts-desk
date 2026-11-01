@@ -4,7 +4,7 @@
 // Usage: npm run flight-claim -- apps/flight-claim/example-trip.json
 import { config } from "../../src/config.ts";
 import { createPayer } from "../../src/telegraph.ts";
-import { settled } from "../../src/evidence.ts";
+import { spentNote } from "../../src/evidence.ts";
 import { assess, draftClaim, readTrip, type Trip } from "./trip.ts";
 
 const path = process.argv[2];
@@ -30,4 +30,4 @@ if (!assessment.eligible) {
 const payer = createPayer();
 console.log(`Paying from ${payer.address} on ${config.network}\n`);
 const { dir, items } = await draftClaim(payer, trip, assessment);
-console.log(`\nSpent ${settled(items)} uUSDC. Review and send: ${dir}/claim.eml  (evidence: ${dir}/claim.md)`);
+console.log(`\n${spentNote(items)} Review and send: ${dir}/claim.eml  (evidence: ${dir}/claim.md)`);

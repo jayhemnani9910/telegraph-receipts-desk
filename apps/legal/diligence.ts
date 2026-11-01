@@ -3,7 +3,7 @@
 // Usage: npm run diligence -- "Apple Inc." "Tesla, Inc." "person:Vladimir Putin"
 import { config } from "../../src/config.ts";
 import { createPayer } from "../../src/telegraph.ts";
-import { settled } from "../../src/evidence.ts";
+import { spentNote } from "../../src/evidence.ts";
 import { buildPack } from "./pack.ts";
 
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -20,4 +20,4 @@ for (const pack of entities) {
     console.log(`${pack.name.padEnd(24)} ${item.check.padEnd(32)} ${item.agreement.padEnd(15)} ${item.finding.slice(0, 70)}`);
   }
 }
-console.log(`\nSpent ${settled(entities.flatMap((e) => e.items))} uUSDC. Pack: ${dir}/pack.md`);
+console.log(`\n${spentNote(entities.flatMap((e) => e.items))} Pack: ${dir}/pack.md`);

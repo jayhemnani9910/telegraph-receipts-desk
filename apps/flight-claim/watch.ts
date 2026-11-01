@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { config } from "../../src/config.ts";
 import { createPayer } from "../../src/telegraph.ts";
 import { faaAirportStatus } from "../../src/primary.ts";
-import { settled } from "../../src/evidence.ts";
+import { spentNote } from "../../src/evidence.ts";
 import { airportsOf, assess, draftClaim, readTrip } from "./trip.ts";
 
 const path = process.argv.slice(2).find((a) => !a.startsWith("--"));
@@ -53,7 +53,7 @@ while (true) {
     if (assessment.eligible) {
       console.log(`\n${assessment.reason} Buying evidence and drafting the claim.\n`);
       const { dir, items } = await draftClaim(payer, trip, assessment);
-      console.log(`\nSpent ${settled(items)} uUSDC. Review and send: ${dir}/claim.eml  (evidence: ${dir}/claim.md)`);
+      console.log(`\n${spentNote(items)} Review and send: ${dir}/claim.eml  (evidence: ${dir}/claim.md)`);
       break;
     }
   } catch (err) {

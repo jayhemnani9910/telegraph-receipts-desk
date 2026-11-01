@@ -21,8 +21,9 @@ export const mentions = (result: unknown, query: string, ...words: string[]) =>
 
 // Value of the yes/no fields among `keys`: true or false if they all agree, null if absent or mixed.
 export const flagValue = (result: unknown, keys: string[]): boolean | null => {
+  // An empty field (V2 returns null for anything the miner did not say) is no answer, not "no".
   const found = leaves(result)
-    .filter(([k]) => keys.includes(k.toLowerCase()))
+    .filter(([k, v]) => keys.includes(k.toLowerCase()) && v !== null && v !== undefined && v !== "")
     .map(([, v]) => [true, 1, "true", "yes"].includes(v as any));
   if (!found.length || found.some((v) => v !== found[0])) return null;
   return found[0];

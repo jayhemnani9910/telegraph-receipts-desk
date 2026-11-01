@@ -72,6 +72,14 @@ export async function buyChecked(payer: ReturnType<typeof createPayer>, label: s
 // What actually settled: the payer's own counter also counts payments that were signed but refused.
 export const settled = (items: Item[]) => items.reduce((s, i) => s + (i.network.charged ? BigInt(i.network.amountUusdc ?? 0) : 0n), 0n);
 
+// Failed calls that were still charged come back with no amount; count them so the total is not understated.
+export const chargedWithoutAmount = (items: Item[]) => items.filter((i) => i.network.charged && !i.network.amountUusdc).length;
+
+export const spentNote = (items: Item[]) => {
+  const n = chargedWithoutAmount(items);
+  return `Spent ${settled(items)} uUSDC${n ? `, plus ${n} failed call${n > 1 ? "s" : ""} charged with no amount reported (npm run reconcile shows each)` : ""}.`;
+};
+
 export const usd = (uusdc: bigint) => `$${(Number(uusdc) / 1e6).toFixed(2)}`;
 
 export const txUrl = (item: Item) => (item.network.txHash ? `${config.explorerTxUrl}${item.network.txHash}` : null);

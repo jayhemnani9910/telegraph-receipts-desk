@@ -55,7 +55,8 @@ for (const f of selected) {
       expected,
       verdict,
       routedIntent: entry.intent,
-      intentMatch: entry.intent === f.intent,
+      // V2 names Intents within a family (FX_NOW_EUR, CRYPTO_PRICE_USD); any member of the family counts.
+      intentMatch: entry.intent === f.intent || Boolean(entry.intent?.startsWith(`${f.intent}_`)),
       miner: result.body?.miner_name ?? entry.miner,
       status: result.status,
       costUsd: result.body?.cost_usd,

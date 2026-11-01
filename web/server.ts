@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { createPublicClient, erc20Abi, formatUnits, http } from "viem";
 import { config } from "../src/config.ts";
 import { createPayer } from "../src/telegraph.ts";
-import { settled } from "../src/evidence.ts";
+import { chargedWithoutAmount, settled } from "../src/evidence.ts";
 import { buildPack } from "../apps/legal/pack.ts";
 import { assess, draftClaim, validTrip, type Trip } from "../apps/flight-claim/trip.ts";
 
@@ -56,7 +56,8 @@ const routes: Record<string, (req: IncomingMessage) => Promise<unknown>> = {
     if (names.length > MAX_ENTITIES) throw new BadRequest(`At most ${MAX_ENTITIES} names per run`);
     const payer = createPayer();
     const { dir, entities } = await buildPack(payer, names);
-    return { dir, entities, spent: settled(entities.flatMap((e) => e.items)).toString(), markdown: readFileSync(`${dir}/pack.md`, "utf8") };
+    const items = entities.flatMap((e) => e.items);
+    return { dir, entities, spent: settled(items).toString(), chargedWithoutAmount: chargedWithoutAmount(items), markdown: readFileSync(`${dir}/pack.md`, "utf8") };
   },
 
   // Free: the refund rule only, nothing bought.
@@ -73,6 +74,7 @@ const routes: Record<string, (req: IncomingMessage) => Promise<unknown>> = {
       assessment,
       items,
       spent: settled(items).toString(),
+      chargedWithoutAmount: chargedWithoutAmount(items),
       email: readFileSync(`${dir}/claim.eml`, "utf8"),
       report: readFileSync(`${dir}/claim.md`, "utf8"),
     };
