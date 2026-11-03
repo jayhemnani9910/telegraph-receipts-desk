@@ -191,12 +191,12 @@ To see the same pattern in a full workflow, read [`apps/legal/pack.ts`](../apps/
 
 ## Troubleshooting
 
-Every entry below is something we actually hit.
+These all came up in our own runs.
 
 | You see | What it means | What to do |
 |---|---|---|
-| `Missing env var PRIVATE_KEY` | No wallet in `.env` | `npm run wallet:new` |
-| Mint fails with insufficient funds | No Sepolia ETH for gas | Step 2, the faucet |
+| `No wallet in .env` | You have not created one yet | `npm run wallet:new` |
+| `has no Sepolia ETH for gas` | Minting needs a little gas | Step 2, the faucet |
 | `HTTP 402` from `first-check`, or `network failed` with status 402 in `data/ledger.jsonl` | Nothing was paid, usually because the wallet has no test USDC | `npm run balance`, then `npm run mint`. We also saw it once from a funded wallet on one named miner; try again or let the node route |
 | `400 invalid_params` | Your params do not match the Intent. Free | Read the Intent schema in step 3 |
 | `503 no_compatible_miner` | That miner cannot take this request. Free | Try another miner, or drop the miner ID |

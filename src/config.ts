@@ -26,4 +26,11 @@ export const config = {
   secUserAgent: env("SEC_USER_AGENT", "receipts-desk research contact@example.com"),
 };
 
-export const privateKey = () => env("PRIVATE_KEY") as `0x${string}`;
+export const privateKey = () => {
+  const key = process.env.PRIVATE_KEY;
+  if (!key) {
+    console.error("No wallet in .env. Create a test wallet with: npm run wallet:new");
+    process.exit(1);
+  }
+  return key as `0x${string}`;
+};
