@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFileSync } from "node:fs";
 import { createPublicClient, erc20Abi, formatUnits, http } from "viem";
 import { config } from "../src/config.ts";
-import { createPayer } from "../src/telegraph.ts";
+import { createPayer, escrowBalance } from "../src/telegraph.ts";
 import { chargedWithoutAmount, settled } from "../src/evidence.ts";
 import { buildPack } from "../apps/legal/pack.ts";
 import { assess, draftClaim, validTrip, type Trip } from "../apps/flight-claim/trip.ts";
@@ -47,7 +47,7 @@ function tripFrom(body: any): Trip {
 const routes: Record<string, (req: IncomingMessage) => Promise<unknown>> = {
   "GET /api/wallet": async () => {
     const usdc = await chain.readContract({ address: config.usdc, abi: erc20Abi, functionName: "balanceOf", args: [address] });
-    return { address, usdc: formatUnits(usdc, 6), network: config.network, explorerTxUrl: config.explorerTxUrl };
+    return { address, usdc: formatUnits(usdc, 6), escrow: formatUnits(await escrowBalance(address), 6), network: config.network, explorerTxUrl: config.explorerTxUrl };
   },
 
   "POST /api/diligence": async (req) => {

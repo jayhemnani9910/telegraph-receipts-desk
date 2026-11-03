@@ -33,8 +33,8 @@ npm run balance        # ETH + USDC of the wallet
 | `npm run probe` | ~$0.20 testnet USDC | Asks every known-answer question through Telegraph, grades it, saves receipts |
 | `npm run probe -- --mission=legal` | ~$0.08 testnet USDC | Same, one mission only |
 | `npm run probe -- --regrade=data/probe/<file>.json` | free | Grades a saved run again |
-| `npm run reconcile -- --hours=1` | free | Matches every on-chain USDC transfer from the wallet to a ledger entry; flags transfers with no receipt and calls charged on error |
-| `npm run reconcile -- --wallet=0x... --hours=24` | free | Lists any wallet's payments to Telegraph with time and tx link, to compare with your own logs; no key needed |
+| `npm run reconcile -- --hours=1` | free | Matches every on-chain USDC transfer from the wallet to a ledger entry; flags transfers with no receipt and failed calls whose payment stays in escrow |
+| `npm run reconcile -- --wallet=0x... --hours=24` | free | Lists any wallet's payments to Telegraph with time and tx link, plus its escrow balance; no key needed |
 
 Outputs:
 - `data/ledger.jsonl`: one line per paid call, keyed by `receipt_hash`; `tx_hash` falls back to the x402 settlement when Telegraph sends no receipt
@@ -55,7 +55,7 @@ Each call names the Intent and its typed params (V2 canonical ask), so it is che
 Each answer is checked against the primary source (US Treasury OFAC SDN list, GLEIF, SEC EDGAR) and marked `confirmed`, `contradicted`, `unconfirmed` or `network failed`. Findings in the pack always come from the primary source, with its URL and timestamp.
 
 Output in `data/packs/<time>/`:
-- `pack.md`: findings per entity, the limits of each check, an invoice with every receipt and Etherscan link, and a list of network answers that were wrong or charged on error
+- `pack.md`: findings per entity, the limits of each check, an invoice with every receipt and Etherscan link, and a list of network answers that were wrong, and failed calls that took a payment
 - `pack.json`: the same, with the full network answers
 
 Costs about $0.01 testnet USDC per check, up to 3 checks per company.
@@ -91,6 +91,12 @@ npm run web   # then open http://localhost:3402
 ```
 
 Both apps in the browser: the diligence pack, and the flight refund (eligibility check free, then buy and draft). Shows each finding, the network's answer, cost, receipt and Etherscan link, with downloads for the pack, `claim.eml` and the evidence. It pays from the wallet in `.env`, so it listens on 127.0.0.1 only, accepts JSON only and refuses other host names.
+
+## Failed calls and escrow
+
+On V2 an x402 payment settles on-chain before the miner is called, and lands in your escrow balance on the Diamond. Delivered calls are charged against it at the next epoch close, so what stays is the amount of the calls that failed. Those show on-chain with no receipt, and are not lost: spend them with the escrow payment scheme, or withdraw them with `requestWithdraw` and `executeWithdraw`. `npm run balance` and `npm run reconcile` show the balance; right after a run it also includes that run's delivered calls until the epoch closes.
+
+A miner that answers 200 with a useless answer counts as delivered and is billed, which is why every answer here is checked against the official source.
 
 ## Spend controls
 

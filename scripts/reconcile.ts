@@ -4,7 +4,9 @@
 // Usage: npm run reconcile [-- --hours=1]   |   npm run reconcile -- --wallet=0x... [--hours=24]
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { formatUnits } from "viem";
 import { config, privateKey } from "../src/config.ts";
+import { escrowBalance } from "../src/telegraph.ts";
 import { readLedger } from "../src/ledger.ts";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
@@ -48,7 +50,7 @@ if (otherWallet) {
     const { timestamp } = await client.getBlock({ blockNumber: t.block });
     console.log(`${new Date(Number(timestamp) * 1000).toISOString()}  ${t.value} uUSDC  ${config.explorerTxUrl}${t.tx}`);
   }
-  console.log("A payment with no answer in your own logs at that time was charged without a result.");
+  console.log(`Escrow balance ${formatUnits(await escrowBalance(address), 6)} USDC. x402 payments land there: delivered calls are charged at the next epoch close, failed ones stay.`);
   process.exit(0);
 }
 
@@ -65,5 +67,6 @@ console.log(`Last ${hours}h  wallet ${address}`);
 console.log(`on-chain transfers ${onchain.length} (${total} uUSDC)  ledger calls ${ledger.length}  matched ${onchain.length - unreceipted.length}`);
 for (const t of unreceipted) console.log(`NO RECEIPT   ${t.value} uUSDC to ${t.to}  ${config.explorerTxUrl}${t.tx}`);
 for (const e of unsettled) console.log(`NOT ON-CHAIN ${e.label}  ${e.receipt_hash}  ${e.tx_hash}`);
-for (const e of chargedOnFailure) console.log(`CHARGED ON ERROR ${e.status} ${e.label}  ${config.explorerTxUrl}${e.tx_hash}`);
+for (const e of chargedOnFailure) console.log(`PAID ON ERROR ${e.status} ${e.label}  ${config.explorerTxUrl}${e.tx_hash}`);
 if (!unreceipted.length && !unsettled.length && !chargedOnFailure.length) console.log("All transfers match the ledger.");
+console.log(`Escrow balance ${formatUnits(await escrowBalance(address), 6)} USDC (failed calls stay there; recent delivered calls until the next epoch close).`);

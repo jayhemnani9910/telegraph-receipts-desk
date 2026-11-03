@@ -140,7 +140,7 @@ const TRIP_FIELDS = [
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const usd = (uusdc) => `$${(Number(uusdc || 0) / 1e6).toFixed(2)}`;
-const failedCharges = (n) => (n ? `, plus ${n} failed ${n === 1 ? "call" : "calls"} charged with no amount reported` : "");
+const failedCharges = (n) => (n ? `, plus ${n} failed ${n === 1 ? "call" : "calls"} whose payment stays in escrow` : "");
 let explorer = "";
 
 async function api(path, body) {
@@ -164,7 +164,7 @@ async function loadWallet() {
   try {
     const w = await api("/api/wallet");
     explorer = w.explorerTxUrl;
-    $("wallet").innerHTML = `Wallet <span class="mono">${esc(w.address.slice(0, 6))}…${esc(w.address.slice(-4))}</span> · <b>${Number(w.usdc).toFixed(2)}</b> test USDC · Ethereum Sepolia`;
+    $("wallet").innerHTML = `Wallet <span class="mono">${esc(w.address.slice(0, 6))}…${esc(w.address.slice(-4))}</span> · <b>${Number(w.usdc).toFixed(2)}</b> test USDC + ${Number(w.escrow).toFixed(2)} in escrow · Ethereum Sepolia`;
   } catch (err) {
     $("wallet").textContent = `Wallet unavailable: ${err.message}`;
   }
@@ -185,7 +185,7 @@ function checksTable(items, withSource) {
     const n = i.network;
     const badge = i.agreement === "network failed" ? "failed" : i.agreement;
     const said = n.status === 200 ? esc(n.miner) : `HTTP ${n.status}`;
-    const cost = n.amountUusdc ? usd(n.amountUusdc) : n.charged ? "charged" : "$0.00";
+    const cost = n.amountUusdc ? usd(n.amountUusdc) : n.charged ? "credited to escrow" : "$0.00";
     const proof = n.txHash ? `<a href="${esc(explorer + n.txHash)}" target="_blank" rel="noopener">tx</a>` : "none";
     const receipt = n.receiptHash ? `<span class="mono" title="${esc(n.receiptHash)}">${esc(n.receiptHash.slice(0, 10))}…</span>` : "none";
     return `<tr>

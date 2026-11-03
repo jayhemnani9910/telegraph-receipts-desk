@@ -10,7 +10,7 @@ export function renderPack(generatedAt: string, payer: string, entities: EntityP
   const items = entities.flatMap((e) => e.items.map((item) => ({ entity: e.name, item })));
   const total = items.reduce((s, { item }) => s + BigInt(item.network.amountUusdc ?? 0), 0n);
   const contradicted = items.filter(({ item }) => item.agreement === "contradicted");
-  // Every failed call that was still charged: the final answer and any earlier attempt on another miner.
+  // Every failed call whose payment stays in escrow: the final answer and any earlier attempt on another miner.
   const failedButCharged = items.flatMap(({ entity, item }) => [
     ...item.failedAttempts.filter((f) => f.charged).map((f) => ({ entity, check: item.check, miner: f.miner, status: f.status, txHash: f.txHash })),
     ...(item.network.status !== 200 && item.network.charged
@@ -24,7 +24,7 @@ export function renderPack(generatedAt: string, payer: string, entities: EntityP
     `Generated ${generatedAt} by wallet \`${payer}\` on ${config.network} (testnet USDC).`,
     `Each finding is taken from the primary source named beside it. The Telegraph answer bought for the same check is shown with its receipt, and marked confirmed, contradicted or unconfirmed against that source.`,
     ``,
-    `**${entities.length} entities, ${items.length} paid checks, ${usd(total)} total.** ${contradicted.length} network answers contradicted the primary source; ${failedButCharged.length} failed calls were still charged.`,
+    `**${entities.length} entities, ${items.length} paid checks, ${usd(total)} total.** ${contradicted.length} network answers contradicted the primary source; ${failedButCharged.length} failed calls left their payment in escrow.`,
   ];
 
   for (const entity of entities) {
@@ -51,7 +51,7 @@ export function renderPack(generatedAt: string, payer: string, entities: EntityP
     out.push(``, `## Network issues found`, ``);
     for (const { entity, item } of contradicted) out.push(`- ${entity}, ${item.check}: ${item.network.miner} answered \`${cell(JSON.stringify(item.network.answer).slice(0, 200))}\`, which disagrees with the primary source.`);
     for (const f of failedButCharged) {
-      out.push(`- ${f.entity}, ${f.check} (miner ${f.miner}): HTTP ${f.status} but payment settled (${f.txHash ? `[tx](${config.explorerTxUrl}${f.txHash})` : "no tx hash"}).`);
+      out.push(`- ${f.entity}, ${f.check} (miner ${f.miner}): HTTP ${f.status}; payment stays in escrow (${f.txHash ? `[tx](${config.explorerTxUrl}${f.txHash})` : "no tx hash"}).`);
     }
   }
 

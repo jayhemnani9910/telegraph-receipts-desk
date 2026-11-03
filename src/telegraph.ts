@@ -1,5 +1,6 @@
 import { decodePaymentResponseHeader, wrapFetchWithPayment, x402Client } from "@x402/fetch";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
+import { createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { config, privateKey } from "./config.ts";
 
@@ -31,6 +32,16 @@ const getJson = async (path: string) => {
   if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
   return res.json();
 };
+
+// x402 payments settle before the miner is called and land here. Delivered calls are charged at the next epoch
+// close, so what stays is the amount of the calls that failed. Spendable with the escrow scheme, or withdrawn.
+export const escrowBalance = (address: `0x${string}`) =>
+  createPublicClient({ transport: http(config.rpcUrl) }).readContract({
+    address: config.diamond,
+    abi: parseAbi(["function escrowBalance(address) view returns (uint256)"]),
+    functionName: "escrowBalance",
+    args: [address],
+  });
 
 // Free discovery
 export const listIntents = () => getJson("/engine/v1/intents");

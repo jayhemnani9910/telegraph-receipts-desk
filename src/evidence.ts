@@ -46,7 +46,7 @@ export type CheckSpec = {
   compare: (answer: unknown, query: string) => Agreement;
 };
 
-// Failed calls can still be charged, so stop trying other miners after this many charged failures.
+// A failed call's payment stays in escrow rather than the wallet, so stop after this many rather than tie up funds.
 const MAX_CHARGED_FAILURES = 2;
 
 const attempt = async (payer: ReturnType<typeof createPayer>, spec: CheckSpec, miner: string | null): Promise<AskResult> => {
@@ -96,13 +96,13 @@ export async function buyChecked(payer: ReturnType<typeof createPayer>, label: s
 // What actually settled: the payer's own counter also counts payments that were signed but refused.
 export const settled = (items: Item[]) => items.reduce((s, i) => s + (i.network.charged ? BigInt(i.network.amountUusdc ?? 0) : 0n), 0n);
 
-// Failed calls that were still charged come back with no amount; count them so the total is not understated.
+// Failed calls that took a payment come back with no amount; the payment stays in escrow, not lost.
 export const chargedWithoutAmount = (items: Item[]) =>
   items.reduce((n, i) => n + Number(i.network.charged && !i.network.amountUusdc) + i.failedAttempts.filter((f) => f.charged).length, 0);
 
 export const spentNote = (items: Item[]) => {
   const n = chargedWithoutAmount(items);
-  return `Spent ${settled(items)} uUSDC${n ? `, plus ${n} failed call${n > 1 ? "s" : ""} charged with no amount reported (npm run reconcile shows each)` : ""}.`;
+  return `Spent ${settled(items)} uUSDC${n ? `, plus ${n} failed call${n > 1 ? "s" : ""} whose payment stays in escrow (npm run reconcile shows each)` : ""}.`;
 };
 
 export const usd = (uusdc: bigint) => `$${(Number(uusdc) / 1e6).toFixed(2)}`;
@@ -110,4 +110,4 @@ export const usd = (uusdc: bigint) => `$${(Number(uusdc) / 1e6).toFixed(2)}`;
 export const txUrl = (item: Item) => (item.network.txHash ? `${config.explorerTxUrl}${item.network.txHash}` : null);
 
 export const cost = (item: Item) =>
-  item.network.amountUusdc ? usd(BigInt(item.network.amountUusdc)) : item.network.charged ? "charged, amount not reported" : "$0.00";
+  item.network.amountUusdc ? usd(BigInt(item.network.amountUusdc)) : item.network.charged ? "credited to escrow" : "$0.00";
