@@ -12,7 +12,8 @@
     "diligence": "tsx apps/legal/diligence.ts",
     "flight-claim": "tsx apps/flight-claim/claim.ts",
     "flight-watch": "tsx apps/flight-claim/watch.ts",
-    "web": "tsx web/server.ts"
+    "web": "tsx web/server.ts",
+    "first-check": "tsx examples/first-check.ts"
   },
   "type": "module",
   "private": true,
