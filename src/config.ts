@@ -22,6 +22,8 @@ export const config = {
   // Spend controls, in micro-USDC (6 decimals): 10000 = $0.01
   maxPerCallUusdc: BigInt(env("MAX_PER_CALL_UUSDC", "50000")),
   maxPerRunUusdc: BigInt(env("MAX_PER_RUN_UUSDC", "1000000")),
+  // Where the ledger, packs, claims and list caches are written.
+  dataDir: env("DATA_DIR", "data"),
   // SEC asks automated clients to identify themselves: "name contact-email"
   secUserAgent: env("SEC_USER_AGENT", "receipts-desk research contact@example.com"),
 };

@@ -95,7 +95,7 @@ export async function draftClaim(payer: ReturnType<typeof createPayer>, trip: Tr
   for (const item of items) console.log(`${item.check.padEnd(18)} ${item.agreement.padEnd(15)} ${item.finding.slice(0, 90)}`);
 
   const generatedAt = new Date().toISOString();
-  const dir = `data/claims/${generatedAt.replaceAll(":", "-")}`;
+  const dir = `${config.dataDir}/claims/${generatedAt.replaceAll(":", "-")}`;
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/claim.json`, JSON.stringify({ generatedAt, payer: payer.address, network: config.network, trip, assessment, items }, null, 2));
   writeFileSync(`${dir}/claim.md`, renderReport(generatedAt, payer.address, trip, assessment, items));

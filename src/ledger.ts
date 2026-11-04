@@ -1,9 +1,10 @@
 import { appendFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
+import { config } from "./config.ts";
 import type { AskResult } from "./telegraph.ts";
 
 // One line per paid call, keyed by receipt_hash (tx_hash is shared across batched payments).
-const LEDGER = "data/ledger.jsonl";
+const LEDGER = `${config.dataDir}/ledger.jsonl`;
 
 export type LedgerEntry = {
   at: string;

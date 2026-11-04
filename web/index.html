@@ -78,6 +78,10 @@
     <div class="wallet" id="wallet">Loading wallet…</div>
   </header>
 
+  <section class="panel" id="hosted-note" hidden>
+    <h2>Live demo on a test network</h2>
+    <p class="hint" style="margin:0">Every check is a real Telegraph purchase on Ethereum Sepolia, paid in free test USDC from <a id="demo-wallet" target="_blank" rel="noopener">this demo wallet</a>. You need no wallet and no money. Limits: <span id="max-names"></span> names per run and 5 paid runs per 10 minutes. Names you enter are sent to Telegraph miners and appear in the pack, so don't enter anything private. <a href="https://github.com/jayhemnani9910/telegraph-receipts-desk">Run it yourself</a>.</p>
+  </section>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-tab="legal">Diligence pack</button>
     <button role="tab" aria-selected="false" data-tab="flight">Flight refund</button>
@@ -86,10 +90,10 @@
   <div id="tab-legal">
     <section class="panel">
       <h2>Who are you checking?</h2>
-      <label for="names">One per line, up to 5. Start a line with <code>person:</code> for a person; companies use their exact legal name.</label>
+      <label for="names">One per line, up to <span id="names-limit">5</span>. Start a line with <code>person:</code> for a person; companies use their exact legal name.</label>
       <textarea id="names">Apple Inc.
 person:Vladimir Putin</textarea>
-      <p class="hint">Companies: sanctions, LEI registry and latest annual report. People: sanctions. Each check is bought for $0.01 and compared with OFAC, GLEIF or SEC EDGAR.</p>
+      <p class="hint">Companies: sanctions, LEI registry and latest annual report. People: sanctions. Each check is bought for $0.01 and compared with the OFAC, UN, EU and UK lists, GLEIF or SEC EDGAR.</p>
       <div class="actions">
         <button class="primary" id="run-legal">Run checks</button>
         <span class="hint" id="legal-estimate"></span>
@@ -102,7 +106,7 @@ person:Vladimir Putin</textarea>
   <div id="tab-flight" hidden>
     <section class="panel">
       <h2>Your trip</h2>
-      <p class="hint">Times in ISO 8601 with the airport's offset, e.g. <code>2026-10-23T08:00:00-07:00</code>. Only the airport codes are sent to the network; your name and booking stay on this computer.</p>
+      <p class="hint">Times in ISO 8601 with the airport's offset, e.g. <code>2026-10-23T08:00:00-07:00</code>. <span id="privacy-note">Only the airport codes are sent to the network; your name and booking stay on this computer.</span></p>
       <div class="grid" id="trip-fields"></div>
       <div class="checks">
         <label><input type="checkbox" id="international"> International</label>
@@ -140,13 +144,15 @@ const TRIP_FIELDS = [
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const usd = (uusdc) => `$${(Number(uusdc || 0) / 1e6).toFixed(2)}`;
+const savedIn = (dir) => (dir ? `<span class="hint">Saved locally in <code>${esc(dir)}</code></span>` : `<span class="hint">Not kept on the server: download it now.</span>`);
 const failedCharges = (n) => (n ? `, plus ${n} failed ${n === 1 ? "call" : "calls"} whose payment stays in escrow` : "");
 let explorer = "";
 
 async function api(path, body) {
   const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  // A server timeout comes back as a plain page, not JSON.
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `The server did not finish (HTTP ${res.status}). Try again.`);
   return data;
 }
 
@@ -160,10 +166,19 @@ function download(name, text, type) {
   URL.revokeObjectURL(a.href);
 }
 
+function showHosted(w) {
+  $("hosted-note").hidden = false;
+  $("demo-wallet").href = `${w.explorerTxUrl.replace("/tx/", "/address/")}${w.address}`;
+  $("max-names").textContent = w.maxEntities;
+  $("names-limit").textContent = w.maxEntities;
+  $("privacy-note").textContent = "This demo runs on a server: use made-up details, like the sample here. For a real trip, run it yourself so your details stay on your computer. Only the airport codes are sent to the network.";
+}
+
 async function loadWallet() {
   try {
     const w = await api("/api/wallet");
     explorer = w.explorerTxUrl;
+    if (w.hosted) showHosted(w);
     $("wallet").innerHTML = `Wallet <span class="mono">${esc(w.address.slice(0, 6))}…${esc(w.address.slice(-4))}</span> · <b>${Number(w.usdc).toFixed(2)}</b> test USDC + ${Number(w.escrow).toFixed(2)} in escrow · Ethereum Sepolia`;
   } catch (err) {
     $("wallet").textContent = `Wallet unavailable: ${err.message}`;
@@ -218,7 +233,7 @@ estimate();
 $("run-legal").addEventListener("click", async () => {
   const button = $("run-legal");
   button.disabled = true;
-  message("legal-msg", "info", "Buying answers and checking sources. This takes 10 to 60 seconds.");
+  message("legal-msg", "info", "Buying answers and checking sources. This takes 1 to 3 minutes when the sanctions lists need downloading, otherwise under a minute.");
   $("legal-results").innerHTML = "";
   try {
     const r = await api("/api/diligence", { names: names() });
@@ -228,7 +243,7 @@ $("run-legal").addEventListener("click", async () => {
       `${r.entities.length} ${r.entities.length === 1 ? "entity" : "entities"}, ${items.length} paid checks, ${usd(r.spent)} spent${failedCharges(r.chargedWithoutAmount)}. ${contradicted} network ${contradicted === 1 ? "answer" : "answers"} contradicted the primary source.`);
     $("legal-results").innerHTML =
       r.entities.map((e) => `<section class="panel"><h2>${esc(e.name)} <span class="hint">(${esc(e.kind)})</span></h2>${checksTable(e.items, true)}</section>`).join("") +
-      `<section class="panel"><div class="actions" style="margin:0"><button class="secondary" id="dl-pack">Download pack (Markdown)</button><span class="hint">Saved locally in <code>${esc(r.dir)}</code></span></div></section>`;
+      `<section class="panel"><div class="actions" style="margin:0"><button class="secondary" id="dl-pack">Download pack (Markdown)</button>${savedIn(r.dir)}</div></section>`;
     $("dl-pack").addEventListener("click", () => download("diligence-pack.md", r.markdown, "text/markdown"));
     loadWallet();
   } catch (err) {
@@ -278,7 +293,7 @@ $("claim-flight").addEventListener("click", async () => {
       <section class="panel"><h2>Draft email</h2>
         <pre>${esc(r.email.replace(/\r/g, ""))}</pre>
         <div class="actions"><button class="primary" id="dl-eml">Download claim.eml</button><button class="secondary" id="dl-report">Download evidence (Markdown)</button>
-        <span class="hint">Saved locally in <code>${esc(r.dir)}</code></span></div>
+        ${savedIn(r.dir)}</div>
       </section>`;
     $("dl-eml").addEventListener("click", () => download("claim.eml", r.email, "message/rfc822"));
     $("dl-report").addEventListener("click", () => download("claim-evidence.md", r.report, "text/markdown"));

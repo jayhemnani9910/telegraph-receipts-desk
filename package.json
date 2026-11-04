@@ -13,6 +13,7 @@
     "flight-claim": "tsx apps/flight-claim/claim.ts",
     "flight-watch": "tsx apps/flight-claim/watch.ts",
     "web": "tsx web/server.ts",
+    "build:hosted": "tsx scripts/build-hosted.ts",
     "first-check": "tsx examples/first-check.ts"
   },
   "type": "module",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

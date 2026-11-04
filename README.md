@@ -2,7 +2,7 @@
 
 Agents that buy answers through [Telegraph](https://anjoman.ai/docs), check each one against the official source, and keep a receipt for every call. Telegraph Hackathon Season II, Apps & Agents track, Missions 04 (Legal) and 15 (Consumer Automation).
 
-- **Diligence pack:** sanctions, company registry and SEC filing checks, each compared with OFAC, GLEIF or SEC EDGAR, with an invoice of receipts.
+- **Diligence pack:** sanctions, company registry and SEC filing checks, each compared with the official OFAC, UN, EU and UK lists, GLEIF or SEC EDGAR, with an invoice of receipts.
 - **Flight refund claim:** checks a trip against the US DOT refund rule, buys airport disruption checks, compares them with the FAA feed, and drafts the refund email. Nothing is sent automatically.
 
 Network: **Ethereum Sepolia testnet** (chain 11155111, Telegraph V2). All payments use free test USDC; nothing here spends real money.
@@ -54,11 +54,13 @@ Problems? See [Troubleshooting](docs/tutorial.md#troubleshooting).
 ## Known limitations
 
 From our runs on the V2 testnet in November 2026:
-- **Answer quality varies.** In one run of both apps, 6 calls were delivered and 3 were confirmed by the official source. The rest gave no usable yes/no, or an empty answer. The apps report that as `unconfirmed` rather than guessing.
-- **SEC filings have no reliable miner yet.** Routing reached miners with empty or off-topic answers, and the SEC miner we tried returned 502.
+- **Answer quality varies.** In a run of both apps on Nov 4, all 11 checks were delivered: 8 confirmed by the official source, 2 contradicted and 1 unconfirmed. The same registry miner returned the right Tesla on one run and a French company called TESLA on the next; the check caught it. A wrong answer is reported as `contradicted`, and one with no usable yes/no as `unconfirmed`, rather than guessing.
+- **SEC filings rely on one miner.** Filing Window (77131) answered correctly for Apple and Tesla. Routing alone still reaches miners with empty or off-topic answers.
 - **Named miners can change.** Both apps ask a few known-good miners first, then fall back to routing. A miner that has gone is refused for free.
 - **Airport-level only.** The flight app checks airport disruption from the FAA, not your specific flight, and US airports only. You enter your flight's new times yourself. The refund right does not depend on the airport check.
-- **Exact-name matching.** The sanctions and registry checks can miss spelling variants, and cover the US OFAC SDN list only.
+- **Exact-name matching.** The sanctions and registry checks can miss spelling variants, a name match alone does not prove it is the same person or company, and ownership is not followed.
+- **List dates differ.** Sanctions lists are downloaded once a day and each pack shows the date on each list. The EU file was dated Oct 23 when we fetched it on Nov 4. A list that cannot be read is reported as not checked.
+- **Renumbered flights.** The US DOT is [not enforcing](https://www.federalregister.gov/documents/2026/07/07/2026-13675/airline-refunds-and-other-consumer-protections) the refund rule until July 7, 2027 when a flight only gets a new number and has no significant change or delay. Don't tick "cancelled" for that case; the app can't tell.
 - **Not legal advice.** Packs and claims are drafts for a person to review.
 
 ## Commands
@@ -91,7 +93,7 @@ For each entity the agent buys, through Telegraph:
 
 Each call names the Intent and its typed params (V2 canonical ask), so it is checked before any payment and the answer comes back in the Intent's own shape.
 
-Each answer is checked against the primary source (US Treasury OFAC SDN list, GLEIF, SEC EDGAR) and marked `confirmed`, `contradicted`, `unconfirmed` or `network failed`. Findings in the pack always come from the primary source, with its URL and timestamp.
+Each answer is checked against the primary source (US OFAC SDN, UN Security Council, EU and UK sanctions lists, GLEIF, SEC EDGAR) and marked `confirmed`, `contradicted`, `unconfirmed` or `network failed`. Findings in the pack always come from the primary source, with its URL and timestamp.
 
 Output in `data/packs/<time>/`:
 - `pack.md`: findings per entity, the limits of each check, an invoice with every receipt and Etherscan link, and a list of network answers that were wrong, and failed calls that took a payment
@@ -131,6 +133,22 @@ npm run web   # then open http://localhost:3402
 
 Both apps in the browser: the diligence pack, and the flight refund (eligibility check free, then buy and draft). Shows each finding, the network's answer, cost, receipt and Etherscan link, with downloads for the pack, `claim.eml` and the evidence. It pays from the wallet in `.env`, so it listens on 127.0.0.1 only, accepts JSON only and refuses other host names.
 
+## Hosted demo
+
+`web/hosted.ts` runs the same page on Vercel's free tier so someone can try it with no wallet. It pays from a separate demo wallet holding only test USDC, which is the hard limit on what it can spend. It also allows 3 names per run and 5 paid runs per 10 minutes per visitor, and deletes each draft after the response.
+
+To deploy your own:
+
+```bash
+npm run build:hosted   # writes only the build to dist/hosted
+cd dist/hosted
+vercel link --yes --project receipts-desk
+vercel env add PRIVATE_KEY production --sensitive   # a separate test wallet, never your main one
+printf '/tmp/receipts' | vercel env add DATA_DIR production
+printf '150000' | vercel env add MAX_PER_RUN_UUSDC production
+vercel deploy --prebuilt --prod
+```
+
 ## Failed calls and escrow
 
 On V2 an x402 payment settles on-chain before the miner is called, and lands in your escrow balance on the Diamond. Delivered calls are charged against it at the next epoch close, so what stays is the amount of the calls that failed. Those show on-chain with no receipt, and are not lost: spend them with the escrow payment scheme, or withdraw them with `requestWithdraw` and `executeWithdraw`. `npm run balance` and `npm run reconcile` show the balance; right after a run it also includes that run's delivered calls until the epoch closes.
@@ -142,6 +160,10 @@ A miner that answers 200 with a useless answer counts as delivered and is billed
 Set in `.env`, in micro-USDC (`10000` = $0.01):
 - `MAX_PER_CALL_UUSDC`: the client refuses to sign any single payment above this.
 - `MAX_PER_RUN_UUSDC`: the client stops paying once a run reaches this total.
+
+## Who it's for
+
+See the [commercial summary](docs/commercial-summary.md): buyers, costs, measured results and what remains before production.
 
 ## Evaluation material
 

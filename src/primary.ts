@@ -10,6 +10,15 @@ export const normalize = (s: string) =>
 
 const tokens = (s: string) => new Set(normalize(s).split(" ").filter(Boolean));
 
+// Exact token match: every word of the name appears in the candidate, in any order.
+const nameHit = (name: string) => {
+  const wanted = [...tokens(name)];
+  return (candidate: string) => {
+    const words = tokens(candidate);
+    return wanted.length > 0 && wanted.every((t) => words.has(t));
+  };
+};
+
 // --- OFAC SDN list (US Treasury) ---
 
 const OFAC = "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports";
@@ -36,7 +45,7 @@ function parseCsv(text: string): string[][] {
 
 // One download per day, cached under data/cache.
 export async function ofacFile(name: string): Promise<{ rows: string[][]; lastModified: string }> {
-  const dir = `data/cache/ofac-${new Date().toISOString().slice(0, 10)}`;
+  const dir = `${config.dataDir}/cache/ofac-${new Date().toISOString().slice(0, 10)}`;
   const path = `${dir}/${name}`;
   if (!existsSync(path)) {
     const res = await fetch(`${OFAC}/${name}`);
@@ -50,12 +59,10 @@ export async function ofacFile(name: string): Promise<{ rows: string[][]; lastMo
 
 export type SdnMatch = { entNum: string; name: string; type: string; programs: string; matchedOn: string };
 
-// Exact token match: every word of the name appears in an SDN name or alias, in any order.
-// No fuzzy matching, so spelling variants are missed; the pack says so.
+// Matches SDN names and aliases. No fuzzy matching, so spelling variants are missed; the pack says so.
 export async function ofacScreen(name: string): Promise<Sourced<SdnMatch[]>> {
   const [sdn, alt] = await Promise.all([ofacFile("SDN.CSV"), ofacFile("ALT.CSV")]);
-  const wanted = tokens(name);
-  const hit = (candidate: string) => [...wanted].every((t) => tokens(candidate).has(t));
+  const hit = nameHit(name);
   const entries = new Map(sdn.rows.map((r) => [r[0], r]));
   // Programs come as "UKRAINE-EO13662] [RUSSIA-EO14024".
   const programs = (r: string[]) => r[3].split("] [").join(", ");
@@ -66,6 +73,98 @@ export async function ofacScreen(name: string): Promise<Sourced<SdnMatch[]>> {
     if (e && a[3] && !matches.has(a[0]) && hit(a[3])) matches.set(a[0], { entNum: e[0], name: e[1], type: e[2], programs: programs(e), matchedOn: a[3] });
   }
   return { value: [...matches.values()], source: `${OFAC}/SDN.CSV (+ ALT.CSV), list published ${sdn.lastModified}`, asOf: new Date().toISOString() };
+}
+
+// --- UN, EU and UK sanctions lists ---
+
+type ListEntry = { id: string; names: string[]; programs: string };
+type ParsedList = { entries: ListEntry[]; generated: string };
+
+const unescapeXml = (s: string) =>
+  s.replace(/&(amp|lt|gt|quot|apos|#39);/g, (_, e) => ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" })[e as string] as string);
+
+const allTags = (xml: string, name: string) => [...xml.matchAll(new RegExp(`<${name}>([^<]*)</${name}>`, "g"))].map((m) => unescapeXml(m[1].trim()));
+
+const parseUn = (xml: string): ParsedList => ({
+  generated: xml.match(/dateGenerated="([\d-]{10})/)?.[1] ?? "unknown",
+  entries: xml.split(/<(?:INDIVIDUAL|ENTITY)>/).slice(1).map((b) => ({
+    id: allTags(b, "REFERENCE_NUMBER")[0] ?? "",
+    programs: allTags(b, "UN_LIST_TYPE").join(", "),
+    names: [["FIRST_NAME", "SECOND_NAME", "THIRD_NAME", "FOURTH_NAME"].flatMap((t) => allTags(b, t)).join(" "), ...allTags(b, "ALIAS_NAME")].filter(Boolean),
+  })),
+});
+
+const parseEu = (xml: string): ParsedList => ({
+  generated: xml.match(/generationDate="([\d-]{10})/)?.[1] ?? "unknown",
+  entries: xml.split("<sanctionEntity ").slice(1).map((b) => ({
+    id: b.match(/euReferenceNumber="([^"]*)"/)?.[1] ?? "",
+    programs: [...new Set([...b.matchAll(/ programme="([^"]+)"/g)].map((m) => m[1]))].join(", "),
+    names: [...new Set([...b.matchAll(/ wholeName="([^"]+)"/g)].map((m) => unescapeXml(m[1])))],
+  })),
+});
+
+const parseUk = (xml: string): ParsedList => ({
+  generated: allTags(xml, "DateGenerated")[0] ?? "unknown",
+  entries: xml.split("<Designation>").slice(1).map((b) => ({
+    id: allTags(b, "UniqueID")[0] ?? "",
+    programs: allTags(b, "RegimeName").join(", "),
+    names: b.split("<Name>").slice(1).map((n) => ["Name1", "Name2", "Name3", "Name4", "Name5", "Name6"].flatMap((t) => allTags(n, t)).join(" ")).filter(Boolean),
+  })),
+});
+
+const OTHER_LISTS = [
+  { list: "UN", url: "https://scsanctions.un.org/resources/xml/en/consolidated.xml", parse: parseUn },
+  { list: "EU", url: "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw", parse: parseEu },
+  { list: "UK", url: "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml", parse: parseUk },
+];
+
+const parsedLists = new Map<string, Promise<ParsedList>>();
+
+// One download per day, cached under data/cache; each list is parsed once per process.
+function loadList({ list, url, parse }: (typeof OTHER_LISTS)[number]): Promise<ParsedList> {
+  const dir = `${config.dataDir}/cache/sanctions-${new Date().toISOString().slice(0, 10)}`;
+  const path = `${dir}/${list}.xml`;
+  const pending = parsedLists.get(path);
+  if (pending) return pending;
+  const loading = (async () => {
+    if (!existsSync(path)) {
+      const res = await fetch(url, { signal: AbortSignal.timeout(180_000) });
+      if (!res.ok) throw new Error(`${list} list -> ${res.status}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path, await res.text());
+    }
+    return parse(readFileSync(path, "utf8"));
+  })();
+  loading.catch(() => parsedLists.delete(path));
+  parsedLists.set(path, loading);
+  return loading;
+}
+
+export type ListMatch = { list: string; id: string; name: string; programs: string; matchedOn: string };
+export type SanctionsScreen = { matches: ListMatch[]; checked: string[]; notChecked: string[] };
+
+// A list that cannot be read is reported as not checked, never as "no match".
+export async function sanctionsScreen(name: string): Promise<Sourced<SanctionsScreen>> {
+  const hit = nameHit(name);
+  const [ofac, ...others] = await Promise.allSettled([ofacScreen(name), ...OTHER_LISTS.map(loadList)]);
+  const screen: SanctionsScreen = { matches: [], checked: [], notChecked: [] };
+  const sources: string[] = [];
+  if (ofac.status === "fulfilled") {
+    screen.checked.push("OFAC SDN");
+    sources.push(ofac.value.source);
+    for (const m of ofac.value.value) screen.matches.push({ list: "OFAC SDN", id: m.entNum, name: m.name, programs: m.programs, matchedOn: m.matchedOn });
+  } else screen.notChecked.push("OFAC SDN");
+  others.forEach((result, i) => {
+    const { list, url } = OTHER_LISTS[i];
+    if (result.status === "rejected") return void screen.notChecked.push(list);
+    screen.checked.push(list);
+    sources.push(`${url}, generated ${result.value.generated}`);
+    for (const e of result.value.entries) {
+      const matchedOn = e.names.find(hit);
+      if (matchedOn) screen.matches.push({ list, id: e.id, name: matchedOn, programs: e.programs, matchedOn });
+    }
+  });
+  return { value: screen, source: sources.join("; "), asOf: new Date().toISOString() };
 }
 
 // --- GLEIF LEI registry ---

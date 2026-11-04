@@ -4,7 +4,7 @@ import { config } from "../../src/config.ts";
 import type { createPayer } from "../../src/telegraph.ts";
 import { buyChecked, type CheckSpec, type Item } from "../../src/evidence.ts";
 import { flagValue, listValue, MATCH_LIST_KEYS, mentions, numberValue, SANCTIONED_KEYS, texts } from "../../src/answers.ts";
-import { edgarLatestAnnual, gleifLookup, ofacScreen } from "../../src/primary.ts";
+import { edgarLatestAnnual, gleifLookup, sanctionsScreen } from "../../src/primary.ts";
 import { renderPack } from "./render.ts";
 
 export type EntityPack = { name: string; kind: "company" | "person"; items: Item[] };
@@ -13,13 +13,28 @@ const LEI_PATTERN = /\b[A-Z0-9]{18}[0-9]{2}\b/;
 
 // Miners asked directly before the routed ask, checked on 2026-11-01: on V2 routing these Intents often reached
 // miners that could not answer. IDs can change; a miner that is gone or cannot take the request costs nothing.
-const SANCTIONS_MINERS = ["4433", "78003"]; // LiveCert, OFAC SDN XML
+const SANCTIONS_MINERS = ["710637", "4433"]; // Sanctions Name Evidence (clear yes/no, checked 2026-11-04), LiveCert
 const REGISTRY_MINERS = ["7393"]; // DataWire Corporate Registry Lookup
+const FILING_MINERS = ["77131"]; // Filing Window, checked 2026-11-04: wants the exact SEC name and explicit dates
 
-// V2 sometimes drops the yes/no but keeps the match score.
-const scoreSaysMatch = (answer: unknown) => {
+// Long enough to always hold the latest annual report of a company that files on time.
+const FILING_WINDOW_DAYS = 400;
+
+const filingWindow = () => {
+  const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  return `${day(Date.now() - FILING_WINDOW_DAYS * 86_400_000)} to ${day(Date.now())}`;
+};
+
+const MAX_LISTED_SHOWN = 8;
+
+// V2 sometimes drops the yes/no. A near-certain score counts, but a fuzzy candidate is no verdict, even in the
+// match list: LiveCert returned the vessel TELA for "Tesla, Inc." at 0.947.
+const saysSanctioned = (answer: unknown) => {
+  const flag = flagValue(answer, SANCTIONED_KEYS);
+  if (flag !== null) return flag;
   const score = numberValue(answer, ["match_score"]);
-  return score === null ? null : score >= 0.9 ? true : score <= 0.5 ? false : null;
+  if (score !== null) return score >= 0.99 ? true : score <= 0.5 ? false : null;
+  return listValue(answer, MATCH_LIST_KEYS);
 };
 
 async function diligence(payer: ReturnType<typeof createPayer>, input: string): Promise<EntityPack> {
@@ -27,30 +42,38 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
   const kind = input.startsWith("person:") ? "person" : "company";
   const name = input.replace(/^(person|company):/, "").trim();
 
-  const [ofac, lei, filing] = await Promise.all([
-    ofacScreen(name),
+  const [sanctions, lei, filing] = await Promise.all([
+    sanctionsScreen(name),
     kind === "company" ? gleifLookup(name) : null,
     kind === "company" ? edgarLatestAnnual(name) : null,
   ]);
 
   const purchases: Promise<Item>[] = [];
 
-  const listed = ofac.value.length > 0;
+  const { matches, checked, notChecked } = sanctions.value;
+  const listed = matches.length > 0;
+  const skipped = notChecked.length ? ` Could not check: ${notChecked.join(", ")}.` : "";
+  const more = matches.length - MAX_LISTED_SHOWN;
   purchases.push(
     buy({
-      check: "Sanctions (OFAC SDN)",
+      check: "Sanctions (OFAC, UN, EU, UK)",
       intent: "SANCTIONS_SCREENING_MATCH_GENERAL",
-      query: `Is ${name} on the OFAC SDN sanctions list?`,
+      query: `Is ${name} on the US OFAC, UN, EU or UK sanctions list?`,
       params: { name },
       miners: SANCTIONS_MINERS,
-      primary: ofac,
+      primary: sanctions,
       finding: listed
-        ? `Listed: ${ofac.value.map((m) => `#${m.entNum} ${m.name} (${m.programs})`).join("; ")}`
-        : "No match on the SDN list or its aliases.",
-      limits: "US OFAC SDN only (not UN, EU, UK). Exact word match on names and aliases; spelling variants and transliterations can be missed.",
+        ? `Listed: ${matches.slice(0, MAX_LISTED_SHOWN).map((m) => `${m.list} ${m.id} ${m.name} (${m.programs})`).join("; ")}${more > 0 ? `; and ${more} more` : ""}.${skipped}`
+        : `No match on ${checked.join(", ")}, or their aliases.${skipped}`,
+      limits: "Exact word match on names and aliases; spelling variants and transliterations can be missed, and a name match alone does not prove it is the same person or company. Does not follow ownership.",
       compare: (answer) => {
-        const said = flagValue(answer, SANCTIONED_KEYS) ?? listValue(answer, MATCH_LIST_KEYS) ?? scoreSaysMatch(answer);
-        return said === null ? "unconfirmed" : said === listed ? "confirmed" : "contradicted";
+        const said = saysSanctioned(answer);
+        if (said === null) return "unconfirmed";
+        if (said === listed) return "confirmed";
+        // Many miners cover OFAC only, so missing a UN, EU or UK listing is not a wrong answer about what they cover.
+        if (!said && !matches.some((m) => m.list === "OFAC SDN")) return "unconfirmed";
+        // A list we could not read may be where the miner found it.
+        return said && notChecked.length ? "unconfirmed" : "contradicted";
       },
     }),
   );
@@ -72,7 +95,8 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
         compare: (answer, query) => {
           // The registry identifier may be the LEI or the national company number.
           if (reg && mentions(answer, query, reg.lei, ...(reg.registeredAs ? [reg.registeredAs] : []))) return "confirmed";
-          return texts(answer, query).some((t) => LEI_PATTERN.test(t)) ? "contradicted" : "unconfirmed";
+          // With no exact-name record to compare against, another LEI is not shown to be wrong.
+          return reg && texts(answer, query).some((t) => LEI_PATTERN.test(t)) ? "contradicted" : "unconfirmed";
         },
       }),
     );
@@ -85,7 +109,8 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
         check: "Latest annual report (SEC EDGAR)",
         intent: "REGULATORY_FILING_MONITOR_GENERAL",
         query: `What is the filing date of ${name}'s (CIK ${f.cik}) most recent ${f.form} on SEC EDGAR?`,
-        params: { entity: `${name} (CIK ${f.cik}) ${f.form}`, period: "last 12 months" },
+        params: { entity: `${name} ${f.form}`, period: filingWindow() },
+        miners: FILING_MINERS,
         primary: filing,
         finding: `${f.form} filed ${f.filingDate}, accession ${f.accession}.`,
         limits: "US SEC registrants only.",
@@ -105,7 +130,7 @@ export async function buildPack(payer: ReturnType<typeof createPayer>, inputs: s
   const entities: EntityPack[] = [];
   for (const input of inputs) entities.push(await diligence(payer, input));
 
-  const dir = `data/packs/${generatedAt.replaceAll(":", "-")}`;
+  const dir = `${config.dataDir}/packs/${generatedAt.replaceAll(":", "-")}`;
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/pack.json`, JSON.stringify({ generatedAt, payer: payer.address, network: config.network, entities }, null, 2));
   writeFileSync(`${dir}/pack.md`, renderPack(generatedAt, payer.address, entities));
