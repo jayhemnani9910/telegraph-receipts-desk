@@ -24,7 +24,7 @@ Both apps work end to end and buy through Telegraph V2's canonical ask, with on-
 - **All calls from Nov 1 to 4, 2026 (`data/ledger.jsonl`, includes other Intents we tested):** 79 calls, 57 delivered. 18 returned HTTP 500, 2 returned 503 and 2 stopped at 402.
 - **Cost:** $0.01 for each delivered check. A failed call's payment stays in escrow as credit, and a 200 with a bad answer is still billed.
 - **Time per delivered check:** median 17 seconds, 90th percentile 24 seconds. The first run of the day can take minutes while the sanctions lists download.
-- **Proof:** `npm run reconcile -- --wallet=<address> --hours=24` lists any wallet's payments, no key needed. Each pack and claim links every payment on Etherscan.
+- **Proof:** `npm run reconcile -- --wallet=0x64B27BdfF2119ba557b9F19c5B1229FDCA312D09 --hours=24` lists the demo wallet's payments, and works for any wallet with no key needed. Each pack and claim links every payment on Etherscan.
 
 ## 4. Why would someone adopt it?
 
@@ -40,5 +40,6 @@ Before production:
 
 ## 5. How can someone try it, and who maintains it?
 
-- **Try it:** follow the [Quickstart](../README.md#quickstart) or the [15-minute tutorial](tutorial.md). Both use only free test tokens.
+- **Try it with no wallet:** <https://receipts-desk.vercel.app> runs both apps on the testnet, paying from a demo wallet. These runs are our own wallet's spending, so they aren't independent adoption.
+- **Run it yourself:** follow the [Quickstart](../README.md#quickstart) or the [15-minute tutorial](tutorial.md). Both use only free test tokens.
 - **Maintainer:** Jay Hemnani ([jayhemnani9910](https://github.com/jayhemnani9910)). Issues are welcome on the [repository](https://github.com/jayhemnani9910/telegraph-receipts-desk/issues).

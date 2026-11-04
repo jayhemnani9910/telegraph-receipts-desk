@@ -30,8 +30,10 @@ while (lo < hi) {
 
 // The public RPC allows 200 blocks per eth_getLogs call; run 10 at a time.
 const transfer = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+// Stop just short of the head: the RPC's nodes can be a block or two apart, and one refuses a block it hasn't seen.
+const head = latest.number - 2n;
 const ranges: [bigint, bigint][] = [];
-for (let from = lo; from <= latest.number; from += 200n) ranges.push([from, from + 199n < latest.number ? from + 199n : latest.number]);
+for (let from = lo; from <= head; from += 200n) ranges.push([from, from + 199n < head ? from + 199n : head]);
 const onchain: { tx: string; to: string; value: bigint; block: bigint }[] = [];
 for (let i = 0; i < ranges.length; i += 10) {
   const batches = await Promise.all(

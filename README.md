@@ -7,6 +7,8 @@ Agents that buy answers through [Telegraph](https://anjoman.ai/docs), check each
 
 Network: **Ethereum Sepolia testnet** (chain 11155111, Telegraph V2). All payments use free test USDC; nothing here spends real money.
 
+**Try it now, no wallet needed:** <https://receipts-desk.vercel.app>. It's the same two apps, paying from a demo wallet on the testnet; see [Hosted demo](#hosted-demo) for its limits.
+
 **New to Telegraph?** Follow the [tutorial](docs/tutorial.md): your first paid answer, checked and on-chain, in about 15 minutes.
 
 ## Quickstart
@@ -135,7 +137,7 @@ Both apps in the browser: the diligence pack, and the flight refund (eligibility
 
 ## Hosted demo
 
-`web/hosted.ts` runs the same page on Vercel's free tier so someone can try it with no wallet. It pays from a separate demo wallet holding only test USDC, which is the hard limit on what it can spend. It also allows 3 names per run and 5 paid runs per 10 minutes per visitor, and deletes each draft after the response.
+<https://receipts-desk.vercel.app> runs the same page (`web/hosted.ts`) on Vercel's free tier so someone can try it with no wallet. It pays from a [separate demo wallet](https://sepolia.etherscan.io/address/0x64B27BdfF2119ba557b9F19c5B1229FDCA312D09) holding only test USDC, which is the hard limit on what it can spend. It also allows 3 names per run and 5 paid runs per 10 minutes per visitor, and deletes each draft after the response.
 
 To deploy your own:
 
