@@ -13,6 +13,7 @@ const LOCAL_MAX_ENTITIES = 5;
 const HOSTED_RUNS_PER_WINDOW = 5;
 const HOSTED_WINDOW_MS = 10 * 60_000;
 const HOSTED_MIN_USDC = 200_000n; // $0.20: enough for the largest run, with failed calls
+const MAX_NAME_LENGTH = 200;
 
 class BadRequest extends Error {}
 class Refused extends Error {}
@@ -45,22 +46,29 @@ function tripFrom(body: any): Trip {
   }
 }
 
+// Per server instance, so a soft limit. Synchronous, so requests sent together can't all pass it.
+export function createRunLimiter(maxRuns: number, windowMs: number) {
+  const recent = new Map<string, number[]>();
+  return (visitor: string, now = Date.now()) => {
+    const runs = (recent.get(visitor) ?? []).filter((at) => now - at < windowMs);
+    const allowed = runs.length < maxRuns;
+    recent.set(visitor, allowed ? [...runs, now] : runs);
+    return allowed;
+  };
+}
+
 export function createApi({ hosted }: { hosted: boolean }) {
   const address = createPayer().address;
   const chain = createPublicClient({ transport: http(config.rpcUrl) });
   const maxEntities = hosted ? HOSTED_MAX_ENTITIES : LOCAL_MAX_ENTITIES;
   const usdcBalance = () => chain.readContract({ address: config.usdc, abi: erc20Abi, functionName: "balanceOf", args: [address] });
 
-  // Per server instance, so a soft limit. The hard limit is what the demo wallet holds.
-  const recentRuns = new Map<string, number[]>();
+  // The hard limit is what the demo wallet holds.
+  const underLimit = createRunLimiter(HOSTED_RUNS_PER_WINDOW, HOSTED_WINDOW_MS);
   const allowPaidRun = async (req: IncomingMessage) => {
     if (!hosted) return;
     const ip = String(req.headers["x-forwarded-for"] ?? "unknown").split(",")[0];
-    const now = Date.now();
-    const runs = (recentRuns.get(ip) ?? []).filter((at) => now - at < HOSTED_WINDOW_MS);
-    if (runs.length >= HOSTED_RUNS_PER_WINDOW) throw new Refused(`Limit reached: ${HOSTED_RUNS_PER_WINDOW} paid runs per 10 minutes. Nothing bought. Try again later, or run it yourself from the repository.`);
-    // Count the run before waiting on the chain, so requests sent together can't all pass the limit.
-    recentRuns.set(ip, [...runs, now]);
+    if (!underLimit(ip)) throw new Refused(`Limit reached: ${HOSTED_RUNS_PER_WINDOW} paid runs per 10 minutes. Nothing bought. Try again later, or run it yourself from the repository.`);
     if ((await usdcBalance()) < HOSTED_MIN_USDC) throw new Refused("The demo wallet is out of test USDC. Nothing bought. Run it yourself from the repository with a free wallet.");
   };
 
@@ -86,6 +94,7 @@ export function createApi({ hosted }: { hosted: boolean }) {
       const names: string[] = ((await readJson(req)).names ?? []).map((n: unknown) => String(n).trim()).filter(Boolean);
       if (!names.length) throw new BadRequest("Add at least one name");
       if (names.length > maxEntities) throw new BadRequest(`At most ${maxEntities} names per run`);
+      if (names.some((n) => !n.replace(/^(person|company):/, "").trim() || n.length > MAX_NAME_LENGTH)) throw new BadRequest(`Each name must be 1 to ${MAX_NAME_LENGTH} characters`);
       await allowPaidRun(req);
       const { dir, entities } = await buildPack(createPayer(), names);
       const items = entities.flatMap((e) => e.items);

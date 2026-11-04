@@ -2,9 +2,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { config } from "../../src/config.ts";
 import type { createPayer } from "../../src/telegraph.ts";
-import { buyChecked, type CheckSpec, type Item } from "../../src/evidence.ts";
+import { buyChecked, type Agreement, type CheckSpec, type Item } from "../../src/evidence.ts";
 import { flagValue, listValue, MATCH_LIST_KEYS, mentions, numberValue, SANCTIONED_KEYS, texts } from "../../src/answers.ts";
-import { edgarLatestAnnual, gleifLookup, sanctionsScreen } from "../../src/primary.ts";
+import { edgarLatestAnnual, gleifLookup, sanctionsScreen, type LeiRecord, type SanctionsScreen } from "../../src/primary.ts";
 import { renderPack } from "./render.ts";
 
 export type EntityPack = { name: string; kind: "company" | "person"; items: Item[] };
@@ -14,7 +14,8 @@ const LEI_PATTERN = /\b[A-Z0-9]{18}[0-9]{2}\b/;
 // Miners asked directly before the routed ask, checked on 2026-11-01: on V2 routing these Intents often reached
 // miners that could not answer. IDs can change; a miner that is gone or cannot take the request costs nothing.
 const SANCTIONS_MINERS = ["710637", "4433"]; // Sanctions Name Evidence (clear yes/no, checked 2026-11-04), LiveCert
-const REGISTRY_MINERS = ["7393"]; // DataWire Corporate Registry Lookup
+// TxLens, then DataWire. Trial on 2026-11-04 with six US, UK and German companies: 14 of 14 right against 9 of 12.
+const REGISTRY_MINERS = ["9002", "7393"];
 const FILING_MINERS = ["77131"]; // Filing Window, checked 2026-11-04: wants the exact SEC name and explicit dates
 
 // Long enough to always hold the latest annual report of a company that files on time.
@@ -29,13 +30,30 @@ const MAX_LISTED_SHOWN = 8;
 
 // V2 sometimes drops the yes/no. A near-certain score counts, but a fuzzy candidate is no verdict, even in the
 // match list: LiveCert returned the vessel TELA for "Tesla, Inc." at 0.947.
-const saysSanctioned = (answer: unknown) => {
+export const saysSanctioned = (answer: unknown) => {
   const flag = flagValue(answer, SANCTIONED_KEYS);
   if (flag !== null) return flag;
   const score = numberValue(answer, ["match_score"]);
   if (score !== null) return score >= 0.99 ? true : score <= 0.5 ? false : null;
   return listValue(answer, MATCH_LIST_KEYS);
 };
+
+export function compareSanctions(answer: unknown, { matches, notChecked }: SanctionsScreen): Agreement {
+  const said = saysSanctioned(answer);
+  if (said === null) return "unconfirmed";
+  if (said === matches.length > 0) return "confirmed";
+  // Many miners cover OFAC only, so missing a UN, EU or UK listing is not a wrong answer about what they cover.
+  if (!said && !matches.some((m) => m.list === "OFAC SDN")) return "unconfirmed";
+  // A list we could not read may be where the miner found it.
+  return said && notChecked.length ? "unconfirmed" : "contradicted";
+}
+
+export function compareRegistry(answer: unknown, query: string, reg: LeiRecord | null): Agreement {
+  // The registry identifier may be the LEI or the national company number.
+  if (reg && mentions(answer, query, reg.lei, ...(reg.registeredAs ? [reg.registeredAs] : []))) return "confirmed";
+  // With no exact-name record to compare against, another LEI is not shown to be wrong.
+  return reg && texts(answer, query).some((t) => LEI_PATTERN.test(t)) ? "contradicted" : "unconfirmed";
+}
 
 async function diligence(payer: ReturnType<typeof createPayer>, input: string): Promise<EntityPack> {
   const buy = (spec: CheckSpec) => buyChecked(payer, "diligence", spec);
@@ -66,15 +84,7 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
         ? `Listed: ${matches.slice(0, MAX_LISTED_SHOWN).map((m) => `${m.list} ${m.id} ${m.name} (${m.programs})`).join("; ")}${more > 0 ? `; and ${more} more` : ""}.${skipped}`
         : `No match on ${checked.join(", ")}, or their aliases.${skipped}`,
       limits: "Exact word match on names and aliases; spelling variants and transliterations can be missed, and a name match alone does not prove it is the same person or company. Does not follow ownership.",
-      compare: (answer) => {
-        const said = saysSanctioned(answer);
-        if (said === null) return "unconfirmed";
-        if (said === listed) return "confirmed";
-        // Many miners cover OFAC only, so missing a UN, EU or UK listing is not a wrong answer about what they cover.
-        if (!said && !matches.some((m) => m.list === "OFAC SDN")) return "unconfirmed";
-        // A list we could not read may be where the miner found it.
-        return said && notChecked.length ? "unconfirmed" : "contradicted";
-      },
+      compare: (answer) => compareSanctions(answer, sanctions.value),
     }),
   );
 
@@ -85,19 +95,15 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
         check: "Corporate registry (GLEIF LEI)",
         intent: "CORPORATE_REGISTRY_LOOKUP_GENERAL",
         query: `Look up ${name} in the GLEIF LEI registry. What is its LEI code and jurisdiction?`,
-        params: { company: name, jurisdiction: reg?.jurisdiction ?? "US" },
+        // Country only: asked for "US-CA", DataWire sometimes answered with an SEC number instead of the LEI.
+        params: { company: name, jurisdiction: (reg?.jurisdiction ?? "US").split("-")[0] },
         miners: REGISTRY_MINERS,
         primary: lei,
         finding: reg
           ? `LEI ${reg.lei}, ${reg.legalName}, jurisdiction ${reg.jurisdiction}${reg.registeredAs ? `, company number ${reg.registeredAs}` : ""}, entity ${reg.entityStatus}, registration ${reg.registrationStatus} (updated ${reg.lastUpdate.slice(0, 10)}).`
           : "No LEI record with this exact legal name.",
         limits: "Matches the exact registered legal name; trading names and subsidiaries are not searched.",
-        compare: (answer, query) => {
-          // The registry identifier may be the LEI or the national company number.
-          if (reg && mentions(answer, query, reg.lei, ...(reg.registeredAs ? [reg.registeredAs] : []))) return "confirmed";
-          // With no exact-name record to compare against, another LEI is not shown to be wrong.
-          return reg && texts(answer, query).some((t) => LEI_PATTERN.test(t)) ? "contradicted" : "unconfirmed";
-        },
+        compare: (answer, query) => compareRegistry(answer, query, reg),
       }),
     );
   }

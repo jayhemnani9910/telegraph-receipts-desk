@@ -8,6 +8,7 @@
     "rankings": "tsx scripts/rankings.ts",
     "probe": "tsx probe/run.ts",
     "typecheck": "tsc",
+    "test": "node --import tsx --test test/*.test.ts",
     "reconcile": "tsx scripts/reconcile.ts",
     "diligence": "tsx apps/legal/diligence.ts",
     "flight-claim": "tsx apps/flight-claim/claim.ts",

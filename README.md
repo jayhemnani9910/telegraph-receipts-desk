@@ -56,7 +56,8 @@ Problems? See [Troubleshooting](docs/tutorial.md#troubleshooting).
 ## Known limitations
 
 From our runs on the V2 testnet in November 2026:
-- **Answer quality varies.** In a run of both apps on Nov 4, all 11 checks were delivered: 8 confirmed by the official source, 2 contradicted and 1 unconfirmed. The same registry miner returned the right Tesla on one run and a French company called TESLA on the next; the check caught it. A wrong answer is reported as `contradicted`, and one with no usable yes/no as `unconfirmed`, rather than guessing.
+- **Answer quality varies.** In our latest run of both apps on Nov 4, all 11 checks were delivered: 9 confirmed by the official source, 1 contradicted and 1 unconfirmed. TravelWire still reports a closure at LAS that the FAA says only affects private planes, and the check catches it. A wrong answer is reported as `contradicted`, and one we can't compare as `unconfirmed`, rather than guessing.
+- **Registry answers rest on a small trial.** We switched to TxLens first after it got 14 of 14 calls right across US, UK and German companies, against 9 of 12 for DataWire in the same comparison, which is now the backup. That's a small sample and can change.
 - **SEC filings rely on one miner.** Filing Window (77131) answered correctly for Apple and Tesla. Routing alone still reaches miners with empty or off-topic answers.
 - **Named miners can change.** Both apps ask a few known-good miners first, then fall back to routing. A miner that has gone is refused for free.
 - **Airport-level only.** The flight app checks airport disruption from the FAA, not your specific flight, and US airports only. You enter your flight's new times yourself. The refund right does not depend on the airport check.
@@ -70,6 +71,7 @@ From our runs on the V2 testnet in November 2026:
 | Command | Cost | What it does |
 |---|---|---|
 | `npm run first-check -- JFK` | $0.01 | Buys one answer and checks it against the FAA; the [tutorial](docs/tutorial.md) walks through it |
+| `npm test` | free | Runs the tests, with no wallet or network |
 | `npm run balance` | free | ETH, test USDC and escrow balance of the wallet |
 | `npm run rankings` | free | Supply, operators and top-ranked miners for every Intent the probe covers |
 | `npm run probe -- --dry` | free | Fetches the independent truth values only |
@@ -156,6 +158,14 @@ vercel deploy --prebuilt --prod
 On V2 an x402 payment settles on-chain before the miner is called, and lands in your escrow balance on the Diamond. Delivered calls are charged against it at the next epoch close, so what stays is the amount of the calls that failed. Those show on-chain with no receipt, and are not lost: spend them with the escrow payment scheme, or withdraw them with `requestWithdraw` and `executeWithdraw`. `npm run balance` and `npm run reconcile` show the balance; right after a run it also includes that run's delivered calls until the epoch closes.
 
 A miner that answers 200 with a useless answer counts as delivered and is billed, which is why every answer here is checked against the official source.
+
+## Tests
+
+```bash
+npm test
+```
+
+No wallet or network needed: the tests use a throwaway wallet and fail any network call, so they can't spend anything. They cover the refund rule's limits, how answers are compared with official sources (including wrong answers we actually received), the sanctions list parsers, the retry and spend rules, and how bad input is refused. They don't test the miners or the live sources; `npm run probe` and the apps do that.
 
 ## Spend controls
 

@@ -20,10 +20,12 @@ We have not measured time saved against someone doing this by hand. Answer quali
 
 Both apps work end to end and buy through Telegraph V2's canonical ask, with on-chain payments and receipts.
 
-- **Run of both apps on Nov 4, 2026:** 11 checks delivered. 8 were confirmed by the official source, 2 contradicted and 1 unconfirmed. Small sample, using test names.
-- **All calls from Nov 1 to 4, 2026 (`data/ledger.jsonl`, includes other Intents we tested):** 79 calls, 57 delivered. 18 returned HTTP 500, 2 returned 503 and 2 stopped at 402.
+- **Latest run of both apps, Nov 4, 2026:** 11 checks delivered. 9 were confirmed by the official source, 1 contradicted and 1 unconfirmed. Small sample, using test names.
+- **Registry miner trial, Nov 4, 2026:** TxLens got 14 of 14 calls right and DataWire 9 of 12 in the same comparison, across six US, UK and German companies, so TxLens now goes first.
+- **Tests:** 58 automated tests run with `npm test`, with no wallet or network.
+- **All calls from Nov 1 to 4, 2026 (`data/ledger.jsonl`, includes other Intents we tested):** 131 calls, 103 delivered. 2 returned HTTP 402, 18 returned HTTP 500, 8 returned HTTP 503. Most of the 503s are miners refusing a request before any payment, during our trial.
 - **Cost:** $0.01 for each delivered check. A failed call's payment stays in escrow as credit, and a 200 with a bad answer is still billed.
-- **Time per delivered check:** median 17 seconds, 90th percentile 24 seconds. The first run of the day can take minutes while the sanctions lists download.
+- **Time per delivered check:** median 16 seconds, 90th percentile 22 seconds. The first run of the day can take minutes while the sanctions lists download.
 - **Proof:** `npm run reconcile -- --wallet=0x64B27BdfF2119ba557b9F19c5B1229FDCA312D09 --hours=24` lists the demo wallet's payments, and works for any wallet with no key needed. Each pack and claim links every payment on Etherscan.
 
 ## 4. Why would someone adopt it?
@@ -33,7 +35,7 @@ Both apps work end to end and buy through Telegraph V2's canonical ask, with on-
 
 Before production:
 - Fuzzy name matching and following ownership, because exact-name matching can miss spelling variants.
-- More reliable miners. SEC filings rely on one miner today, and registry answers vary between runs.
+- More reliable miners. SEC filings rely on one miner today, and the registry choice rests on a small trial.
 - Mainnet pricing, which we have not seen.
 - A lawyer's review of the pack and the claim wording.
 - Real users. Everything above still needs testing with people who do this work.

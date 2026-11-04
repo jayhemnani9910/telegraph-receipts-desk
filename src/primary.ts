@@ -11,7 +11,7 @@ export const normalize = (s: string) =>
 const tokens = (s: string) => new Set(normalize(s).split(" ").filter(Boolean));
 
 // Exact token match: every word of the name appears in the candidate, in any order.
-const nameHit = (name: string) => {
+export const nameHit = (name: string) => {
   const wanted = [...tokens(name)];
   return (candidate: string) => {
     const words = tokens(candidate);
@@ -23,7 +23,7 @@ const nameHit = (name: string) => {
 
 const OFAC = "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports";
 
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -85,7 +85,7 @@ const unescapeXml = (s: string) =>
 
 const allTags = (xml: string, name: string) => [...xml.matchAll(new RegExp(`<${name}>([^<]*)</${name}>`, "g"))].map((m) => unescapeXml(m[1].trim()));
 
-const parseUn = (xml: string): ParsedList => ({
+export const parseUn = (xml: string): ParsedList => ({
   generated: xml.match(/dateGenerated="([\d-]{10})/)?.[1] ?? "unknown",
   entries: xml.split(/<(?:INDIVIDUAL|ENTITY)>/).slice(1).map((b) => ({
     id: allTags(b, "REFERENCE_NUMBER")[0] ?? "",
@@ -94,7 +94,7 @@ const parseUn = (xml: string): ParsedList => ({
   })),
 });
 
-const parseEu = (xml: string): ParsedList => ({
+export const parseEu = (xml: string): ParsedList => ({
   generated: xml.match(/generationDate="([\d-]{10})/)?.[1] ?? "unknown",
   entries: xml.split("<sanctionEntity ").slice(1).map((b) => ({
     id: b.match(/euReferenceNumber="([^"]*)"/)?.[1] ?? "",
@@ -103,7 +103,7 @@ const parseEu = (xml: string): ParsedList => ({
   })),
 });
 
-const parseUk = (xml: string): ParsedList => ({
+export const parseUk = (xml: string): ParsedList => ({
   generated: allTags(xml, "DateGenerated")[0] ?? "unknown",
   entries: xml.split("<Designation>").slice(1).map((b) => ({
     id: allTags(b, "UniqueID")[0] ?? "",

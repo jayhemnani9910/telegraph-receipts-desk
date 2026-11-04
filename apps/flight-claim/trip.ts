@@ -33,6 +33,9 @@ export type Assessment = { eligible: boolean; reason: string; changeHours: numbe
 // FAA-based miners failed upstream). A miner that is gone or cannot take the request costs nothing.
 const TRAVEL_MINERS = ["7602"]; // TravelWire Travel Disruption
 
+const AIRPORT_CODE = /^[A-Za-z]{3}$/;
+const TIMES = ["scheduledDeparture", "revisedDeparture", "scheduledArrival", "revisedArrival"] as const;
+
 const REQUIRED = ["passenger", "email", "airline", "airlineEmail", "flight", "booking", "from", "to", "scheduledDeparture", "fare", "currency"] as const;
 
 export const readTrip = (path: string): Trip => validTrip(JSON.parse(readFileSync(path, "utf8")));
@@ -40,6 +43,10 @@ export const readTrip = (path: string): Trip => validTrip(JSON.parse(readFileSyn
 export function validTrip(trip: Trip): Trip {
   const missing = REQUIRED.filter((k) => !trip[k]);
   if (missing.length) throw new Error(`Trip is missing: ${missing.join(", ")}`);
+  // These two go to the network, so nothing else may be typed here.
+  if (![trip.from, trip.to].every((code) => AIRPORT_CODE.test(code))) throw new Error("From and To must be 3-letter airport codes, e.g. JFK");
+  const badTime = TIMES.find((k) => trip[k] && Number.isNaN(Date.parse(trip[k]!)));
+  if (badTime) throw new Error(`Bad date in ${badTime}: ${trip[badTime]} (use ISO 8601 with offset, e.g. 2026-10-23T08:00:00-07:00)`);
   return trip;
 }
 
@@ -47,9 +54,7 @@ export const airportsOf = (trip: Trip) => [...new Set([trip.from, trip.to].map((
 
 const hoursBetween = (from?: string, to?: string) => {
   if (!from || !to) return 0;
-  const hours = (Date.parse(to) - Date.parse(from)) / 3_600_000;
-  if (Number.isNaN(hours)) throw new Error(`Bad date: ${from} or ${to} (use ISO 8601 with offset, e.g. 2026-10-23T08:00:00-07:00)`);
-  return hours;
+  return (Date.parse(to) - Date.parse(from)) / 3_600_000;
 };
 
 // 14 CFR Part 260: refund due when the carrier cancels or significantly changes the flight and the
