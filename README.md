@@ -1,30 +1,63 @@
 # Receipts Desk
 
-Agents that buy answers through [Telegraph](https://anjoman.ai/docs), check each one against the official source, and keep a receipt for every call. Telegraph Hackathon Season II, Apps & Agents track, Missions 04 (Legal) and 15 (Consumer Automation).
+![The hosted demo: a flight moved 3.8 hours qualifies for a refund, a flight moved 1.5 hours does not](docs/demo.gif)
+
+[![test](https://github.com/jayhemnani9910/telegraph-receipts-desk/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/jayhemnani9910/telegraph-receipts-desk/actions/workflows/test.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Sanctions checks for paralegals and refund claims for flyers, checked against official sources.
+
+```bash
+git clone https://github.com/jayhemnani9910/telegraph-receipts-desk.git && cd telegraph-receipts-desk && npm install && cp .env.example .env
+```
+
+**Try it with no wallet:** <https://receipts-desk.vercel.app>. The clip above is that page running its free eligibility check. Buying an answer costs test USDC, so the clip stops before that step.
+
+I made this for Telegraph Hackathon Season II. [Telegraph](https://anjoman.ai/docs) is a network where apps pay per question to independent data providers called miners. A paid answer can still be wrong, so these two apps treat each one as a claim and check it.
 
 - **Diligence pack:** sanctions, company registry and SEC filing checks, each compared with the official OFAC, UN, EU and UK lists, GLEIF or SEC EDGAR, with an invoice of receipts.
 - **Flight refund claim:** checks a trip against the US DOT refund rule, buys airport disruption checks, compares them with the FAA feed, and drafts the refund email. Nothing is sent automatically.
 
-Network: **Ethereum Sepolia testnet** (chain 11155111, Telegraph V2). All payments use free test USDC; nothing here spends real money.
+This runs on the **Ethereum Sepolia testnet** (chain 11155111, Telegraph V2). All payments use free test USDC, so nothing here spends real money. There are no customers or outside users yet.
 
-**Try it now, no wallet needed:** <https://receipts-desk.vercel.app>. It's the same two apps, paying from a demo wallet on the testnet; see [Hosted demo](#hosted-demo) for its limits.
+## Usage
 
-**New to Telegraph?** Follow the [tutorial](docs/tutorial.md): your first paid answer, checked and on-chain, in about 15 minutes.
-
-## Quickstart
-
-Requires Node 20+.
+These work straight after the install line, with no wallet:
 
 ```bash
-git clone https://github.com/jayhemnani9910/telegraph-receipts-desk.git
-cd telegraph-receipts-desk
-npm install
-cp .env.example .env
+npm test                  # 58 tests, no wallet or network
+npm run rankings          # supply, operators and top miners per Intent
+npm run probe -- --dry    # fetches the official values only
+```
+
+`npm run rankings` on Nov 5, 2026:
+
+```
+SANCTIONS_SCREENING_MATCH    miners  17  operators  7  #1 txlens(9002) 1.00  #2 san-os-au(78007) 1.00  #3 san-os-ofac(78004) 1.00
+CORPORATE_REGISTRY_LOOKUP    miners  22  operators  6  #1 datawire-corporate-registry-lookup(7393) 1.00  #2 corp-os-ofac(98005) 1.00  #3 livecert(4433) 1.00
+TRAVEL_DISRUPTION            miners  14  operators  3  #1 travelwire-travel-disruption(7602) 0.99  #2 zk-travel-nas(710639) 0.99  #3 chainsight-oracle(302) 0.98
+```
+
+To buy answers, see [Run it yourself](#run-it-yourself).
+
+## How it works
+
+1. **Get the official answer.** It's free. FAA status, sanctions lists, GLEIF and SEC EDGAR are read directly.
+2. **Buy the same answer through Telegraph.** Each call names the Intent and its typed params, so a bad request is refused before any payment. The node's price is $0.01 per call, paid over x402.
+3. **Compare.** Each answer is marked `confirmed`, `contradicted`, `unconfirmed` or `network failed`. An answer we can't compare is `unconfirmed`, not a guess. Findings in a pack or claim always come from the official source, with its URL and timestamp.
+4. **Keep the receipt.** Every paid call goes in `data/ledger.jsonl` with its receipt hash and transaction, and each pack or claim links its payments on Etherscan.
+
+Both apps ask a few known-good miners by ID first, then fall back to routing. A miner that can't take the request is refused before payment, so that costs nothing.
+
+## Run it yourself
+
+Requires Node 20+. After the install line:
+
+```bash
 npm run wallet:new     # creates a test wallet in .env and prints its address
 ```
 
 Fund it, both free:
-1. Send the address a little Sepolia ETH from <https://sepolia-faucet.pk910.de> (gas for minting only; about a minute of mining).
+1. Send the address a little Sepolia ETH from <https://sepolia-faucet.pk910.de>. Minting needs it for gas.
 2. Mint test USDC, then buy your first answer:
 
 ```bash
@@ -32,38 +65,27 @@ npm run mint                 # 10 test USDC (amount: npm run mint -- 20)
 npm run first-check -- JFK   # $0.01
 ```
 
-Expected result (the miner and answer can differ, because the network routes each call):
-
-```
-FAA says:       JFK not disrupted (feed updated Tue Nov 3 14:13:43 2026 GMT)
-Telegraph said: {"route_or_flight":"JFK","disrupted":false,"status":null,"delay_minutes":null,"reason":null}
-Served by:      FAA NAS Airport Disruption Status (result_shape: intent)
-Verdict:        CONFIRMED by the FAA
-Receipt:        0x844c0b8e579c...
-Payment:        https://sepolia.etherscan.io/tx/0x9bd5dc269c07...
-```
-
 Then try the apps:
 
 ```bash
-npm run diligence -- "Apple Inc." "person:Vladimir Putin"       # about $0.04
+npm run diligence -- "Apple Inc." "person:Vladimir Putin"       # up to $0.04
 npm run flight-claim -- apps/flight-claim/example-trip.json     # about $0.02
 npm run web                                                     # both in the browser at http://localhost:3402
 ```
 
-Problems? See [Troubleshooting](docs/tutorial.md#troubleshooting).
+New to Telegraph? The [tutorial](docs/tutorial.md) goes through each step with sample output. Problems? See [Troubleshooting](docs/tutorial.md#troubleshooting).
 
 ## Known limitations
 
-From our runs on the V2 testnet in November 2026:
-- **Answer quality varies.** In our latest run of both apps on Nov 4, all 11 checks were delivered: 9 confirmed by the official source, 1 contradicted and 1 unconfirmed. TravelWire still reports a closure at LAS that the FAA says only affects private planes, and the check catches it. A wrong answer is reported as `contradicted`, and one we can't compare as `unconfirmed`, rather than guessing.
-- **Registry answers rest on a small trial.** We switched to TxLens first after it got 14 of 14 calls right across US, UK and German companies, against 9 of 12 for DataWire in the same comparison, which is now the backup. That's a small sample and can change.
-- **SEC filings rely on one miner.** Filing Window (77131) answered correctly for Apple and Tesla. Routing alone still reaches miners with empty or off-topic answers.
-- **Named miners can change.** Both apps ask a few known-good miners first, then fall back to routing. A miner that has gone is refused for free.
+- **Answer quality varies.** A wrong answer is reported as `contradicted`. A miner that answers 200 with a useless answer still counts as delivered and is billed.
+- **Registry answers rest on a small trial.** I ask TxLens first because it got 14 of 14 calls right across six US, UK and German companies on Nov 4, 2026, against 9 of 12 for DataWire, which is now the backup. That's a small sample and can change.
+- **SEC filings have one named miner.** Filing Window (77131) is asked first, and routing is the only fallback.
+- **Named miners can change.** IDs are hard-coded in `apps/legal/pack.ts` and `apps/flight-claim/trip.ts`.
 - **Airport-level only.** The flight app checks airport disruption from the FAA, not your specific flight, and US airports only. You enter your flight's new times yourself. The refund right does not depend on the airport check.
 - **Exact-name matching.** The sanctions and registry checks can miss spelling variants, a name match alone does not prove it is the same person or company, and ownership is not followed.
-- **List dates differ.** Sanctions lists are downloaded once a day and each pack shows the date on each list. The EU file was dated Oct 23 when we fetched it on Nov 4. A list that cannot be read is reported as not checked.
+- **List dates differ.** Sanctions lists are downloaded once a day and each pack shows the date on each list. When I fetched them on Nov 5, 2026, the EU file was dated Oct 23. A list that cannot be read is reported as not checked.
 - **Renumbered flights.** The US DOT is [not enforcing](https://www.federalregister.gov/documents/2026/07/07/2026-13675/airline-refunds-and-other-consumer-protections) the refund rule until July 7, 2027 when a flight only gets a new number and has no significant change or delay. Don't tick "cancelled" for that case; the app can't tell.
+- **Long `reconcile` windows can fail.** On the default public RPC, `--hours=24` works and `--hours=48` stopped with `pruned history unavailable`.
 - **Not legal advice.** Packs and claims are drafts for a person to review.
 
 ## Commands
@@ -75,7 +97,7 @@ From our runs on the V2 testnet in November 2026:
 | `npm run balance` | free | ETH, test USDC and escrow balance of the wallet |
 | `npm run rankings` | free | Supply, operators and top-ranked miners for every Intent the probe covers |
 | `npm run probe -- --dry` | free | Fetches the independent truth values only |
-| `npm run probe` | ~$0.20 testnet USDC | Asks every known-answer question through Telegraph, grades it, saves receipts |
+| `npm run probe` | ~$0.21 testnet USDC | Asks every known-answer question through Telegraph, grades it, saves receipts |
 | `npm run probe -- --mission=legal` | ~$0.08 testnet USDC | Same, one mission only |
 | `npm run probe -- --regrade=data/probe/<file>.json` | free | Grades a saved run again |
 | `npm run reconcile -- --hours=1` | free | Matches every on-chain USDC transfer from the wallet to a ledger entry; flags transfers with no receipt and failed calls whose payment stays in escrow |
@@ -95,20 +117,16 @@ For each entity the agent buys, through Telegraph:
 - sanctions screening (`SANCTIONS_SCREENING_MATCH_GENERAL`)
 - for companies, an LEI registry lookup (`CORPORATE_REGISTRY_LOOKUP_GENERAL`) and, for SEC registrants, the latest annual report (`REGULATORY_FILING_MONITOR_GENERAL`)
 
-Each call names the Intent and its typed params (V2 canonical ask), so it is checked before any payment and the answer comes back in the Intent's own shape.
-
-Each answer is checked against the primary source (US OFAC SDN, UN Security Council, EU and UK sanctions lists, GLEIF, SEC EDGAR) and marked `confirmed`, `contradicted`, `unconfirmed` or `network failed`. Findings in the pack always come from the primary source, with its URL and timestamp.
-
 Output in `data/packs/<time>/`:
 - `pack.md`: findings per entity, the limits of each check, an invoice with every receipt and Etherscan link, and a list of network answers that were wrong, and failed calls that took a payment
 - `pack.json`: the same, with the full network answers
 
-Costs about $0.01 testnet USDC per check, up to 3 checks per company.
+Costs $0.01 testnet USDC per check, up to 3 checks per company.
 
 ## Consumer Automation: flight refund claim
 
 ```bash
-cp apps/flight-claim/example-trip.json data/my-trip.json   # data/ is gitignored; edit your flight details
+mkdir -p data && cp apps/flight-claim/example-trip.json data/my-trip.json   # data/ is gitignored; edit your flight details
 npm run flight-claim -- data/my-trip.json
 ```
 
@@ -139,7 +157,7 @@ Both apps in the browser: the diligence pack, and the flight refund (eligibility
 
 ## Hosted demo
 
-<https://receipts-desk.vercel.app> runs the same page (`web/hosted.ts`) on Vercel's free tier so someone can try it with no wallet. It pays from a [separate demo wallet](https://sepolia.etherscan.io/address/0x64B27BdfF2119ba557b9F19c5B1229FDCA312D09) holding only test USDC, which is the hard limit on what it can spend. It also allows 3 names per run and 5 paid runs per 10 minutes per visitor, and deletes each draft after the response.
+<https://receipts-desk.vercel.app> runs the same page (`web/hosted.ts`) so someone can try it with no wallet. It pays from a [separate demo wallet](https://sepolia.etherscan.io/address/0x64B27BdfF2119ba557b9F19c5B1229FDCA312D09) holding test USDC, which is the hard limit on what it can spend. It also allows 3 names per run and 5 paid runs per 10 minutes per visitor, and deletes each draft after the response.
 
 To deploy your own:
 
@@ -155,9 +173,7 @@ vercel deploy --prebuilt --prod
 
 ## Failed calls and escrow
 
-On V2 an x402 payment settles on-chain before the miner is called, and lands in your escrow balance on the Diamond. Delivered calls are charged against it at the next epoch close, so what stays is the amount of the calls that failed. Those show on-chain with no receipt, and are not lost: spend them with the escrow payment scheme, or withdraw them with `requestWithdraw` and `executeWithdraw`. `npm run balance` and `npm run reconcile` show the balance; right after a run it also includes that run's delivered calls until the epoch closes.
-
-A miner that answers 200 with a useless answer counts as delivered and is billed, which is why every answer here is checked against the official source.
+On V2 an x402 payment settles on-chain before the miner is called, and lands in your escrow balance on the Diamond. Delivered calls are charged against it at the next epoch close, so what stays is the amount of the calls that failed. Those show on-chain with no receipt, and are not lost: spend them with the escrow payment scheme, or withdraw them. `npm run balance` and `npm run reconcile` show the balance; right after a run it also includes that run's delivered calls until the epoch closes.
 
 ## Tests
 
@@ -177,15 +193,16 @@ Set in `.env`, in micro-USDC (`10000` = $0.01):
 
 See the [commercial summary](docs/commercial-summary.md): buyers, costs, measured results and what remains before production.
 
-## Evaluation material
+## Contributing
 
-We also contribute truth sources and question pairs to Telegraph's evaluation pool for the Intents these apps use. Telegraph asks contributors not to publish test questions, so that material and its generator are not in this repository.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Tried the quickstart or tutorial? [Open an issue](https://github.com/jayhemnani9910/telegraph-receipts-desk/issues) with what worked and what did not.
 
-## Help improve this
-
-- Tried the quickstart or tutorial? [Open an issue](https://github.com/jayhemnani9910/telegraph-receipts-desk/issues) with what worked and what did not.
-- Want to build on Telegraph? Its [bounty board](https://github.com/telegraphprotocol/bounties/issues) lists missing providers and evaluation work, and the SEC filings gap above is one place a better miner would help straight away.
+Want to build on Telegraph? Its [bounty board](https://github.com/telegraphprotocol/bounties/issues) lists missing providers and evaluation work, and the SEC filings gap above is one place a better miner would help.
 
 ## Mainnet
 
 Chain ID, token address, node URL and explorer are configuration only (`.env`), not code.
+
+## License
+
+[MIT](LICENSE)
