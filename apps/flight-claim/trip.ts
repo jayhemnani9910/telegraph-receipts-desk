@@ -33,7 +33,7 @@ export type Assessment = { eligible: boolean; reason: string; changeHours: numbe
 // FAA-based miners failed upstream). A miner that is gone or cannot take the request costs nothing.
 const TRAVEL_MINERS = ["7602"]; // TravelWire Travel Disruption
 
-const AIRPORT_CODE = /^[A-Za-z]{3}$/;
+export const AIRPORT_CODE = /^[A-Za-z]{3}$/;
 const TIMES = ["scheduledDeparture", "revisedDeparture", "scheduledArrival", "revisedArrival"] as const;
 
 const REQUIRED = ["passenger", "email", "airline", "airlineEmail", "flight", "booking", "from", "to", "scheduledDeparture", "fare", "currency"] as const;

@@ -11,37 +11,51 @@ import { readLedger } from "../src/ledger.ts";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
 const hours = Number(arg("hours") ?? 1);
+if (!(hours > 0)) {
+  console.error("Usage: npm run reconcile [-- --hours=1]   |   npm run reconcile -- --wallet=0x... [--hours=24]");
+  process.exit(1);
+}
 const otherWallet = arg("wallet") as `0x${string}` | undefined;
 const address = otherWallet ?? privateKeyToAccount(privateKey()).address;
 const client = createPublicClient({ transport: http(config.rpcUrl) });
 
-const latest = await client.getBlock();
-const since = Number(latest.timestamp) - hours * 3600;
+// Public RPCs drop old history; say so in one line instead of a viem stack trace.
+const { since, onchain } = await readTransfers().catch((e) => {
+  if (!/pruned history/i.test(`${e?.details ?? ""} ${e?.message ?? e}`)) throw e;
+  console.error(`The RPC no longer has blocks from ${hours} hours ago. Try fewer --hours, or set RPC_URL to a node that keeps older logs.`);
+  process.exit(1);
+});
 
-// First block at or after `since`. Block times change, so search instead of estimating;
-// the lower bound assumes at most 10 blocks a second and stays clear of pruned history.
-let lo = latest.number - BigInt(hours * 36000);
-let hi = latest.number;
-while (lo < hi) {
-  const mid = (lo + hi) / 2n;
-  if (Number((await client.getBlock({ blockNumber: mid })).timestamp) < since) lo = mid + 1n;
-  else hi = mid;
-}
+async function readTransfers() {
+  const latest = await client.getBlock();
+  const since = Number(latest.timestamp) - hours * 3600;
 
-// The public RPC allows 200 blocks per eth_getLogs call; run 10 at a time.
-const transfer = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
-// Stop just short of the head: the RPC's nodes can be a block or two apart, and one refuses a block it hasn't seen.
-const head = latest.number - 2n;
-const ranges: [bigint, bigint][] = [];
-for (let from = lo; from <= head; from += 200n) ranges.push([from, from + 199n < head ? from + 199n : head]);
-const onchain: { tx: string; to: string; value: bigint; block: bigint }[] = [];
-for (let i = 0; i < ranges.length; i += 10) {
-  const batches = await Promise.all(
-    ranges.slice(i, i + 10).map(([fromBlock, toBlock]) =>
-      client.getLogs({ address: config.usdc, event: transfer, args: { from: address }, fromBlock, toBlock }),
-    ),
-  );
-  onchain.push(...batches.flat().map((l) => ({ tx: l.transactionHash, to: l.args.to!, value: l.args.value!, block: l.blockNumber })));
+  // First block at or after `since`. Block times change, so search instead of estimating;
+  // the lower bound assumes at most 10 blocks a second and stays clear of pruned history.
+  let lo = latest.number - BigInt(hours * 36000);
+  let hi = latest.number;
+  while (lo < hi) {
+    const mid = (lo + hi) / 2n;
+    if (Number((await client.getBlock({ blockNumber: mid })).timestamp) < since) lo = mid + 1n;
+    else hi = mid;
+  }
+
+  // The public RPC allows 200 blocks per eth_getLogs call; run 10 at a time.
+  const transfer = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+  // Stop just short of the head: the RPC's nodes can be a block or two apart, and one refuses a block it hasn't seen.
+  const head = latest.number - 2n;
+  const ranges: [bigint, bigint][] = [];
+  for (let from = lo; from <= head; from += 200n) ranges.push([from, from + 199n < head ? from + 199n : head]);
+  const onchain: { tx: string; to: string; value: bigint; block: bigint }[] = [];
+  for (let i = 0; i < ranges.length; i += 10) {
+    const batches = await Promise.all(
+      ranges.slice(i, i + 10).map(([fromBlock, toBlock]) =>
+        client.getLogs({ address: config.usdc, event: transfer, args: { from: address }, fromBlock, toBlock }),
+      ),
+    );
+    onchain.push(...batches.flat().map((l) => ({ tx: l.transactionHash, to: l.args.to!, value: l.args.value!, block: l.blockNumber })));
+  }
+  return { since, onchain };
 }
 
 if (otherWallet) {

@@ -4,7 +4,7 @@ I try to reply to issues within a few days.
 
 ## Setup
 
-You need Node 20 or newer.
+You need Node 20.12 or newer.
 
 ```bash
 git clone https://github.com/jayhemnani9910/telegraph-receipts-desk.git

@@ -18,6 +18,9 @@
     "first-check": "tsx examples/first-check.ts"
   },
   "type": "module",
+  "engines": {
+    "node": ">=20.12"
+  },
   "private": true,
   "dependencies": {
     "@x402/evm": "^2.28.0",

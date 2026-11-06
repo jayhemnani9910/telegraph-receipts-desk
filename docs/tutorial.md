@@ -1,6 +1,6 @@
 # Buy an answer through Telegraph, and check it before you trust it
 
-Time: about 15 minutes. Cost: free test tokens only. You need Node 20+ and a terminal.
+Time: about 15 minutes. Cost: free test tokens only. You need Node 20.12+ and a terminal.
 
 By the end you will have:
 - looked up what a Telegraph Intent expects, for free

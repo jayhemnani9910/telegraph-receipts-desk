@@ -13,6 +13,13 @@ All notable changes to this project are written down here. The format follows [K
 
 - Rewrote the README.
 - `.gitignore` now covers every `.env*` file except `.env.example`.
+- `package.json` declares Node 20.12 or newer, which `process.loadEnvFile` needs; the docs say the same.
+
+### Fixed
+
+- `reconcile` prints one line instead of a stack trace when the RPC has pruned the history it needs, and refuses an `--hours` value that is not a positive number.
+- `first-check` refuses anything but a 3-letter airport code before it fetches or buys anything.
+- The probe's SEC request uses `SEC_USER_AGENT` from `.env`.
 
 ## [0.1.0] - 2026-11-04
 

@@ -21,7 +21,7 @@ export async function usdcTotalSupply(): Promise<number> {
 
 export async function appleLatest10K(): Promise<string> {
   const res = await fetch("https://data.sec.gov/submissions/CIK0000320193.json", {
-    headers: { "User-Agent": "receipts-desk research contact@example.com" },
+    headers: { "User-Agent": config.secUserAgent },
   });
   const recent = (await res.json()).filings.recent;
   const i = recent.form.indexOf("10-K");

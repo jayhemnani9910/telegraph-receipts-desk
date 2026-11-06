@@ -50,7 +50,7 @@ Both apps ask a few known-good miners by ID first, then fall back to routing. A 
 
 ## Run it yourself
 
-Requires Node 20+. After the install line:
+Requires Node 20.12+. After the install line:
 
 ```bash
 npm run wallet:new     # creates a test wallet in .env and prints its address
@@ -85,7 +85,6 @@ New to Telegraph? The [tutorial](docs/tutorial.md) goes through each step with s
 - **Exact-name matching.** The sanctions and registry checks can miss spelling variants, a name match alone does not prove it is the same person or company, and ownership is not followed.
 - **List dates differ.** Sanctions lists are downloaded once a day and each pack shows the date on each list. When I fetched them on Nov 5, 2026, the EU file was dated Oct 23. A list that cannot be read is reported as not checked.
 - **Renumbered flights.** The US DOT is [not enforcing](https://www.federalregister.gov/documents/2026/07/07/2026-13675/airline-refunds-and-other-consumer-protections) the refund rule until July 7, 2027 when a flight only gets a new number and has no significant change or delay. Don't tick "cancelled" for that case; the app can't tell.
-- **Long `reconcile` windows can fail.** On the default public RPC, `--hours=24` works and `--hours=48` stopped with `pruned history unavailable`.
 - **Not legal advice.** Packs and claims are drafts for a person to review.
 
 ## Commands

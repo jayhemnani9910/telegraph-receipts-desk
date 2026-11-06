@@ -4,9 +4,14 @@ import { config } from "../src/config.ts";
 import { record } from "../src/ledger.ts";
 import { faaAirportStatus } from "../src/primary.ts";
 import { createPayer } from "../src/telegraph.ts";
+import { AIRPORT_CODE } from "../apps/flight-claim/trip.ts";
 
 const airport = (process.argv[2] ?? "JFK").toUpperCase();
 const intent = "TRAVEL_DISRUPTION_GENERAL";
+if (!AIRPORT_CODE.test(airport)) {
+  console.error(`"${process.argv[2]}" is not a 3-letter airport code. Try: npm run first-check -- JFK`);
+  process.exit(1);
+}
 
 // 1. The official answer, free, from the FAA.
 const official = (await faaAirportStatus(airport)).value;
