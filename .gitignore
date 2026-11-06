@@ -1,6 +1,6 @@
 node_modules/
 dist/
-.env
-.env.hosted
+.env*
+!.env.example
 data/
 research/
