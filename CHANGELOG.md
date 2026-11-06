@@ -4,6 +4,24 @@ All notable changes to this project are written down here. The format follows [K
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-07
+
+### Added
+
+- A 2-minute demo video of a real run on the live site: [on X](https://x.com/jeyhemnani9/status/2118799203417854385).
+
+### Changed
+
+- `package.json` declares Node 20.12 or newer, which `process.loadEnvFile` needs; the docs say the same.
+
+### Fixed
+
+- `reconcile` prints one line instead of a stack trace when the RPC has pruned the history it needs, and refuses an `--hours` value that is not a positive number.
+- `first-check` refuses anything but a 3-letter airport code before it fetches or buys anything.
+- The probe's SEC request uses `SEC_USER_AGENT` from `.env`.
+
+## [0.1.1] - 2026-11-06
+
 ### Added
 
 - MIT license.
@@ -13,13 +31,6 @@ All notable changes to this project are written down here. The format follows [K
 
 - Rewrote the README.
 - `.gitignore` now covers every `.env*` file except `.env.example`.
-- `package.json` declares Node 20.12 or newer, which `process.loadEnvFile` needs; the docs say the same.
-
-### Fixed
-
-- `reconcile` prints one line instead of a stack trace when the RPC has pruned the history it needs, and refuses an `--hours` value that is not a positive number.
-- `first-check` refuses anything but a 3-letter airport code before it fetches or buys anything.
-- The probe's SEC request uses `SEC_USER_AGENT` from `.env`.
 
 ## [0.1.0] - 2026-11-04
 
@@ -48,5 +59,7 @@ All notable changes to this project are written down here. The format follows [K
 - Clear errors when the wallet is missing or has no gas.
 - `reconcile` no longer asks for blocks past the RPC head.
 
-[Unreleased]: https://github.com/jayhemnani9910/telegraph-receipts-desk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jayhemnani9910/telegraph-receipts-desk/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jayhemnani9910/telegraph-receipts-desk/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/jayhemnani9910/telegraph-receipts-desk/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jayhemnani9910/telegraph-receipts-desk/releases/tag/v0.1.0

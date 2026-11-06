@@ -12,6 +12,8 @@ git clone https://github.com/jayhemnani9910/telegraph-receipts-desk.git && cd te
 
 **Try it with no wallet:** <https://receipts-desk.vercel.app>. The clip above is that page running its free eligibility check. Buying an answer costs test USDC, so the clip stops before that step.
 
+**Demo video (2 min), a real paid run:** <https://x.com/jeyhemnani9/status/2118799203417854385>
+
 I made this for Telegraph Hackathon Season II. [Telegraph](https://anjoman.ai/docs) is a network where apps pay per question to independent data providers called miners. A paid answer can still be wrong, so these two apps treat each one as a claim and check it.
 
 - **Diligence pack:** sanctions, company registry and SEC filing checks, each compared with the official OFAC, UN, EU and UK lists, GLEIF or SEC EDGAR, with an invoice of receipts.
