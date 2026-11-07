@@ -23,6 +23,7 @@ export type Item = {
     miner: string | null;
     answer: unknown;
     receiptHash: string | null;
+    signalHash?: string | null;
     txHash: string | null;
     amountUusdc: string | null;
     charged: boolean;
@@ -84,6 +85,7 @@ export async function buyChecked(payer: ReturnType<typeof createPayer>, label: s
       miner: result.body?.miner_name ?? entry.miner,
       answer,
       receiptHash: entry.receipt_hash,
+      signalHash: entry.signal_hash,
       txHash: entry.tx_hash,
       amountUusdc: entry.amount_uusdc,
       charged: entry.paid,
@@ -108,6 +110,9 @@ export const spentNote = (items: Item[]) => {
 export const usd = (uusdc: bigint) => `$${(Number(uusdc) / 1e6).toFixed(2)}`;
 
 export const txUrl = (item: Item) => (item.network.txHash ? `${config.explorerTxUrl}${item.network.txHash}` : null);
+
+// Telegraph's own record of this answer: payer wallet, miner, intent and payment tx.
+export const signalUrl = (item: Item) => (item.network.signalHash ? `${config.nodeUrl}/engine/v1/signal/${item.network.signalHash}` : null);
 
 export const cost = (item: Item) =>
   item.network.amountUusdc ? usd(BigInt(item.network.amountUusdc)) : item.network.charged ? "credited to escrow" : "$0.00";

@@ -26,7 +26,7 @@ This runs on the **Ethereum Sepolia testnet** (chain 11155111, Telegraph V2). Al
 These work straight after the install line, with no wallet:
 
 ```bash
-npm test                  # 58 tests, no wallet or network
+npm test                  # 69 tests, no wallet or network
 npm run rankings          # supply, operators and top miners per Intent
 npm run probe -- --dry    # fetches the official values only
 ```
@@ -46,7 +46,7 @@ To buy answers, see [Run it yourself](#run-it-yourself).
 1. **Get the official answer.** It's free. FAA status, sanctions lists, GLEIF and SEC EDGAR are read directly.
 2. **Buy the same answer through Telegraph.** Each call names the Intent and its typed params, so a bad request is refused before any payment. The node's price is $0.01 per call, paid over x402.
 3. **Compare.** Each answer is marked `confirmed`, `contradicted`, `unconfirmed` or `network failed`. An answer we can't compare is `unconfirmed`, not a guess. Findings in a pack or claim always come from the official source, with its URL and timestamp.
-4. **Keep the receipt.** Every paid call goes in `data/ledger.jsonl` with its receipt hash and transaction, and each pack or claim links its payments on Etherscan.
+4. **Keep the receipt.** Every paid call goes in `data/ledger.jsonl` with its receipt hash and transaction. Each pack or claim links its payment on Etherscan and the node's own record of the answer (`GET /engine/v1/signal/<hash>`), which shows the paying wallet, the miner and the transaction.
 
 Both apps ask a few known-good miners by ID first, then fall back to routing. A miner that can't take the request is refused before payment, so that costs nothing.
 
@@ -84,8 +84,8 @@ New to Telegraph? The [tutorial](docs/tutorial.md) goes through each step with s
 - **SEC filings have one named miner.** Filing Window (77131) is asked first, and routing is the only fallback.
 - **Named miners can change.** IDs are hard-coded in `apps/legal/pack.ts` and `apps/flight-claim/trip.ts`.
 - **Airport-level only.** The flight app checks airport disruption from the FAA, not your specific flight, and US airports only. You enter your flight's new times yourself. The refund right does not depend on the airport check.
-- **Exact-name matching.** The sanctions and registry checks can miss spelling variants, a name match alone does not prove it is the same person or company, and ownership is not followed.
-- **List dates differ.** Sanctions lists are downloaded once a day and each pack shows the date on each list. When I fetched them on Nov 5, 2026, the EU file was dated Oct 23. A list that cannot be read is reported as not checked.
+- **Name matching is simple.** Every word must appear in a listed name; long words may be one letter off, shown for review only. Other spellings and transliterations can be missed. A name match alone gives REVIEW, not HIT. Owners are followed only as far as the parents a company reports to GLEIF, and many report none.
+- **List dates differ.** Sanctions lists are downloaded once a day and each pack shows the date on each list. When I fetched them on Nov 5, 2026, the EU file was dated Oct 23. A list that cannot be read is reported as not checked and the verdict becomes REVIEW; the EU download returned HTTP 500 on Nov 7–8, 2026.
 - **Renumbered flights.** The US DOT is [not enforcing](https://www.federalregister.gov/documents/2026/07/07/2026-13675/airline-refunds-and-other-consumer-protections) the refund rule until July 7, 2027 when a flight only gets a new number and has no significant change or delay. Don't tick "cancelled" for that case; the app can't tell.
 - **Not legal advice.** Packs and claims are drafts for a person to review.
 
@@ -111,8 +111,15 @@ Outputs:
 ## Legal: diligence pack
 
 ```bash
-npm run diligence -- "Apple Inc." "Tesla, Inc." "person:Vladimir Putin"
+npm run diligence -- "Apple Inc." "Tesla, Inc." "person:Vladimir Putin, dob:1952-10-07"
 ```
+
+Each entity gets one verdict:
+- **HIT:** listed under this exact name, or with the same birth date.
+- **REVIEW:** a name match that a name alone can't settle, a similar name one letter off, a parent company that is listed, or a list that couldn't be read.
+- **CLEAR:** none of those. Same-name entries whose listed birth dates all differ from the one given are ruled out and counted.
+
+The birth date (`dob:YYYY-MM-DD` or `dob:YYYY`) is used only against the official lists and is never sent to the network. For companies, the parents reported to GLEIF are screened against the same lists for free: `SBERBANK CIB (UK) LIMITED` is not listed itself, but its parent Sberbank of Russia is, so it comes back REVIEW.
 
 For each entity the agent buys, through Telegraph:
 - sanctions screening (`SANCTIONS_SCREENING_MATCH_GENERAL`)
@@ -155,6 +162,20 @@ npm run web   # then open http://localhost:3402
 ```
 
 Both apps in the browser: the diligence pack, and the flight refund (eligibility check free, then buy and draft). Shows each finding, the network's answer, cost, receipt and Etherscan link, with downloads for the pack, `claim.eml` and the evidence. It pays from the wallet in `.env`, so it listens on 127.0.0.1 only, accepts JSON only and refuses other host names.
+
+## Public ledger
+
+The page's **Public ledger** tab (<https://receipts-desk.vercel.app/#ledger>) lists every payment the wallet made to Telegraph, read from the [Blockscout](https://eth-sepolia.blockscout.com) API rather than our own logs, grouped into runs. Runs at the maintainer's test times are labelled. `GET /api/ledger` returns the same as JSON.
+
+## MCP for agents
+
+The hosted demo is also an MCP server, so an agent can run the checks itself:
+
+```bash
+claude mcp add --transport http receipts-desk https://receipts-desk.vercel.app/api/mcp
+```
+
+Tools: `diligence_pack` (paid from the demo wallet, same limits as the page), `flight_refund_eligibility` (free, no personal details) and `public_ledger` (free). Locally, `npm run web` serves the same at `http://localhost:3402/api/mcp`, paying from your own wallet.
 
 ## Hosted demo
 

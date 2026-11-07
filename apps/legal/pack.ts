@@ -4,10 +4,67 @@ import { config } from "../../src/config.ts";
 import type { createPayer } from "../../src/telegraph.ts";
 import { buyChecked, type Agreement, type CheckSpec, type Item } from "../../src/evidence.ts";
 import { flagValue, listValue, MATCH_LIST_KEYS, mentions, numberValue, SANCTIONED_KEYS, texts } from "../../src/answers.ts";
-import { edgarLatestAnnual, gleifLookup, sanctionsScreen, type LeiRecord, type SanctionsScreen } from "../../src/primary.ts";
+import { edgarLatestAnnual, gleifLookup, gleifParents, sameBirth, sameName, sanctionsScreen, type LeiRecord, type ListMatch, type SanctionsScreen, type Sourced } from "../../src/primary.ts";
 import { renderPack } from "./render.ts";
 
-export type EntityPack = { name: string; kind: "company" | "person"; items: Item[] };
+export type Owner = { relation: string; lei: string; name: string; matches: ListMatch[] };
+export type Verdict = { level: "CLEAR" | "REVIEW" | "HIT"; reasons: string[] };
+export type EntityPack = {
+  name: string;
+  kind: "company" | "person";
+  birth: string | null;
+  items: Item[];
+  // Parent companies reported to GLEIF, each screened against the same lists. Free; null when not looked up.
+  owners: Sourced<Owner[]> | null;
+  ownersNote: string | null;
+  verdict: Verdict;
+};
+
+// "Tesla, Inc." or "person:Vladimir Putin, dob:1952-10-07". The birth date stays local; only the name goes to miners.
+export function parseEntity(input: string) {
+  const kind: "company" | "person" = input.startsWith("person:") ? "person" : "company";
+  const dob = input.match(/,\s*dob:\s*(\S+)\s*$/i);
+  if (dob && !/^\d{4}(-\d{2}-\d{2})?$/.test(dob[1])) throw new Error(`Write the birth date as dob:YYYY-MM-DD or dob:YYYY, not ${dob[1]}`);
+  const name = input.replace(/^(person|company):/, "").replace(/,\s*dob:.*$/i, "").trim();
+  return { kind, name, birth: dob?.[1] ?? null };
+}
+
+const listed = (m: ListMatch) => `${m.list} ${m.id} ${m.name}`;
+
+// One call for the person reading the pack. HIT: listed under this exact name, or with the same birth date.
+// REVIEW: a possible match that a name alone cannot settle, a listed owner, or a list that could not be read.
+export function verdictFor(name: string, birth: string | null, screen: SanctionsScreen, owners: Owner[], ownersNote: string | null): Verdict {
+  const sure = screen.matches.filter((m) => sameName(name, m.matchedOn) || (birth !== null && m.births.some((b) => sameBirth(b, birth))));
+  if (sure.length) return { level: "HIT", reasons: [`Listed: ${sure.slice(0, 3).map(listed).join("; ")}.`] };
+  const reasons = [
+    screen.matches.length && `Name matches ${screen.matches.length} listed ${screen.matches.length === 1 ? "entry" : "entries"} (e.g. ${listed(screen.matches[0])}); confirm it is the same ${birth ? "one" : "one, for example by adding dob:YYYY-MM-DD"}.`,
+    screen.near.length && `Similar name, one letter off: ${screen.near.slice(0, 3).map(listed).join("; ")}.`,
+    ...owners.filter((o) => o.matches.length).map((o) => `Owner listed: ${o.relation} ${o.name} (${listed(o.matches[0])}).`),
+    screen.notChecked.length && `Could not read: ${screen.notChecked.join(", ")}.`,
+    ownersNote,
+  ].filter((r): r is string => Boolean(r));
+  if (reasons.length) return { level: "REVIEW", reasons };
+  const ruledOut = screen.ruledOut.length ? ` ${screen.ruledOut.length} same-name ${screen.ruledOut.length === 1 ? "entry was" : "entries were"} ruled out by birth date.` : "";
+  return { level: "CLEAR", reasons: [`No match on ${screen.checked.join(", ")}.${ruledOut}`] };
+}
+
+async function screenOwners(lei: string): Promise<{ owners: Sourced<Owner[]> | null; note: string | null }> {
+  try {
+    const parents = await gleifParents(lei);
+    const owners: Owner[] = [];
+    for (const p of parents.value) {
+      // A one-word short name like "Sberbank" matches every listed company with that word, so full names only.
+      const full = p.names.filter((n) => n.trim().split(/\s+/).length > 1);
+      const screened = full.length ? full : p.names;
+      const found = new Map<string, ListMatch>();
+      for (const n of screened) for (const m of (await sanctionsScreen(n)).value.matches) found.set(`${m.list} ${m.id}`, m);
+      owners.push({ relation: p.relation, lei: p.lei, name: screened.at(-1)!, matches: [...found.values()] });
+    }
+    return { owners: { ...parents, value: owners }, note: null };
+  } catch (err) {
+    return { owners: null, note: `Could not check owners: ${(err as Error).message}.` };
+  }
+}
 
 const LEI_PATTERN = /\b[A-Z0-9]{18}[0-9]{2}\b/;
 
@@ -57,21 +114,24 @@ export function compareRegistry(answer: unknown, query: string, reg: LeiRecord |
 
 async function diligence(payer: ReturnType<typeof createPayer>, input: string): Promise<EntityPack> {
   const buy = (spec: CheckSpec) => buyChecked(payer, "diligence", spec);
-  const kind = input.startsWith("person:") ? "person" : "company";
-  const name = input.replace(/^(person|company):/, "").trim();
+  const { kind, name, birth } = parseEntity(input);
 
   const [sanctions, lei, filing] = await Promise.all([
-    sanctionsScreen(name),
+    sanctionsScreen(name, birth ?? undefined),
     kind === "company" ? gleifLookup(name) : null,
     kind === "company" ? edgarLatestAnnual(name) : null,
   ]);
 
   const purchases: Promise<Item>[] = [];
 
-  const { matches, checked, notChecked } = sanctions.value;
-  const listed = matches.length > 0;
+  const { matches, near, ruledOut, checked, notChecked } = sanctions.value;
   const skipped = notChecked.length ? ` Could not check: ${notChecked.join(", ")}.` : "";
   const more = matches.length - MAX_LISTED_SHOWN;
+  const also = [
+    near.length && `${near.length} similar ${near.length === 1 ? "name" : "names"} one letter off (for review)`,
+    ruledOut.length && `${ruledOut.length} same-name ${ruledOut.length === 1 ? "entry" : "entries"} ruled out by birth date`,
+  ].filter(Boolean);
+  const alsoText = also.length ? ` Also: ${also.join("; ")}.` : "";
   purchases.push(
     buy({
       check: "Sanctions (OFAC, UN, EU, UK)",
@@ -80,10 +140,10 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
       params: { name },
       miners: SANCTIONS_MINERS,
       primary: sanctions,
-      finding: listed
-        ? `Listed: ${matches.slice(0, MAX_LISTED_SHOWN).map((m) => `${m.list} ${m.id} ${m.name} (${m.programs})`).join("; ")}${more > 0 ? `; and ${more} more` : ""}.${skipped}`
-        : `No match on ${checked.join(", ")}, or their aliases.${skipped}`,
-      limits: "Exact word match on names and aliases; spelling variants and transliterations can be missed, and a name match alone does not prove it is the same person or company. Does not follow ownership.",
+      finding: matches.length
+        ? `Listed: ${matches.slice(0, MAX_LISTED_SHOWN).map((m) => `${m.list} ${m.id} ${m.name} (${m.programs})`).join("; ")}${more > 0 ? `; and ${more} more` : ""}.${alsoText}${skipped}`
+        : `No match on ${checked.join(", ")}, or their aliases.${alsoText}${skipped}`,
+      limits: "Every word of the name must appear in a listed name or alias; words of 6 or more letters may be one letter off, shown for review only. Other spellings and transliterations can be missed. A name match alone does not prove it is the same person or company; a birth date, if given, rules out entries whose listed birth dates all differ.",
       compare: (answer) => compareSanctions(answer, sanctions.value),
     }),
   );
@@ -127,7 +187,9 @@ async function diligence(payer: ReturnType<typeof createPayer>, input: string): 
     );
   }
 
-  return { name, kind, items: await Promise.all(purchases) };
+  const { owners, note } = lei?.value ? await screenOwners(lei.value.lei) : { owners: null, note: null };
+  const items = await Promise.all(purchases);
+  return { name, kind, birth, items, owners, ownersNote: note, verdict: verdictFor(name, birth, sanctions.value, owners?.value ?? [], note) };
 }
 
 // Runs the entities one after another and writes pack.md and pack.json. Returns the folder and the results.

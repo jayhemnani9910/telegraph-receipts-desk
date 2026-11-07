@@ -1,15 +1,15 @@
 import "./setup.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareRegistry, compareSanctions, saysSanctioned } from "../apps/legal/pack.ts";
+import { compareRegistry, compareSanctions, parseEntity, saysSanctioned, verdictFor } from "../apps/legal/pack.ts";
 import type { LeiRecord, ListMatch, SanctionsScreen } from "../src/primary.ts";
 
 const allLists = ["OFAC SDN", "UN", "EU", "UK"];
-const match = (list: string): ListMatch => ({ list, id: "1", name: "X", programs: "P", matchedOn: "X" });
-const clear: SanctionsScreen = { matches: [], checked: allLists, notChecked: [] };
-const onOfac: SanctionsScreen = { matches: [match("OFAC SDN")], checked: allLists, notChecked: [] };
-const onEuOnly: SanctionsScreen = { matches: [match("EU")], checked: allLists, notChecked: [] };
-const ukUnread: SanctionsScreen = { matches: [], checked: ["OFAC SDN", "UN", "EU"], notChecked: ["UK"] };
+const match = (list: string): ListMatch => ({ list, id: "1", name: "X", programs: "P", matchedOn: "X", births: [] });
+const clear: SanctionsScreen = { matches: [], checked: allLists, notChecked: [], near: [], ruledOut: [] };
+const onOfac: SanctionsScreen = { matches: [match("OFAC SDN")], checked: allLists, notChecked: [], near: [], ruledOut: [] };
+const onEuOnly: SanctionsScreen = { matches: [match("EU")], checked: allLists, notChecked: [], near: [], ruledOut: [] };
+const ukUnread: SanctionsScreen = { matches: [], checked: ["OFAC SDN", "UN", "EU"], notChecked: ["UK"], near: [], ruledOut: [] };
 
 test("saysSanctioned prefers the yes/no over the score", () => {
   assert.equal(saysSanctioned({ sanctioned: false, match_score: 1 }), false);
@@ -75,4 +75,28 @@ test("an empty answer is unconfirmed (DataWire returned a French address and no 
 
 test("with no exact-name record, an LEI is not called wrong", () => {
   assert.equal(compareRegistry({ registration_id: "969500ABCDEFGHIJKL12" }, query, null), "unconfirmed");
+});
+
+const putin: ListMatch = { list: "OFAC SDN", id: "35096", name: "PUTIN, Vladimir Vladimirovich", programs: "RUSSIA-EO14024", matchedOn: "PUTIN, Vladimir Vladimirovich", births: ["1952-10-07"] };
+const screen = (s: Partial<SanctionsScreen>): SanctionsScreen => ({ matches: [], near: [], ruledOut: [], checked: allLists, notChecked: [], ...s });
+
+test("a name match alone is REVIEW; the same birth date or the exact listed name makes it a HIT", () => {
+  assert.equal(verdictFor("Vladimir Putin", null, screen({ matches: [putin] }), [], null).level, "REVIEW");
+  assert.equal(verdictFor("Vladimir Putin", "1952", screen({ matches: [putin] }), [], null).level, "HIT");
+  assert.equal(verdictFor("Vladimir Vladimirovich Putin", null, screen({ matches: [putin] }), [], null).level, "HIT");
+});
+
+test("near names, listed owners and unread lists are REVIEW; otherwise CLEAR", () => {
+  assert.equal(verdictFor("Vladimir Puttin", null, screen({ near: [putin] }), [], null).level, "REVIEW");
+  const owner = { relation: "ultimate parent", lei: "549300WE6TAF5EEWQS81", name: "Sberbank of Russia", matches: [putin] };
+  assert.match(verdictFor("SBERBANK CIB (UK) LIMITED", null, screen({}), [owner], null).reasons[0], /^Owner listed: ultimate parent Sberbank of Russia/);
+  assert.equal(verdictFor("Tesla, Inc.", null, screen({ notChecked: ["EU"] }), [], null).level, "REVIEW");
+  const clear = verdictFor("Vladimir Putin", "1980", screen({ ruledOut: [putin] }), [], null);
+  assert.deepEqual([clear.level, clear.reasons[0]], ["CLEAR", "No match on OFAC SDN, UN, EU, UK. 1 same-name entry was ruled out by birth date."]);
+});
+
+test("a birth date is read from the input and kept out of the name", () => {
+  assert.deepEqual(parseEntity("person:Vladimir Putin, dob:1952-10-07"), { kind: "person", name: "Vladimir Putin", birth: "1952-10-07" });
+  assert.deepEqual(parseEntity("Tesla, Inc."), { kind: "company", name: "Tesla, Inc.", birth: null });
+  assert.throws(() => parseEntity("person:A B, dob:07/10/1952"), /dob:YYYY-MM-DD/);
 });

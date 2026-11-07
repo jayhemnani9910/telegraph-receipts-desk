@@ -1,7 +1,8 @@
 import "./setup.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buyChecked, chargedWithoutAmount, settled, type CheckSpec } from "../src/evidence.ts";
+import { config } from "../src/config.ts";
+import { buyChecked, chargedWithoutAmount, settled, signalUrl, type CheckSpec } from "../src/evidence.ts";
 import type { AskResult, createPayer } from "../src/telegraph.ts";
 
 const spec: CheckSpec = {
@@ -16,7 +17,7 @@ const spec: CheckSpec = {
   compare: () => "confirmed",
 };
 
-const delivered: AskResult = { status: 200, body: { result: { ok: true }, miner_name: "M" }, receipt: { receipt_hash: "r", tx_hash: "t", amount_uusdc: "10000", miner: "m", intent: "TEST_INTENT" } as AskResult["receipt"], payment: null, durationMs: 1 };
+const delivered: AskResult = { status: 200, body: { result: { ok: true }, miner_name: "M", signal_hash: "0xabc" }, receipt: { receipt_hash: "r", tx_hash: "t", amount_uusdc: "10000", miner: "m", intent: "TEST_INTENT" } as AskResult["receipt"], payment: null, durationMs: 1 };
 const refusedFree: AskResult = { status: 503, body: { error: "no_compatible_miner" }, receipt: null, payment: null, durationMs: 1 };
 const failedCharged: AskResult = { status: 500, body: { error: "upstream" }, receipt: null, payment: { success: true, transaction: "t2" } as AskResult["payment"], durationMs: 1 };
 
@@ -87,4 +88,11 @@ test("with no typed params the query is routed, and named miners are skipped", a
   const { asked, payer } = fakePayer(delivered);
   await buyChecked(payer, "test", { ...spec, params: undefined });
   assert.deepEqual(asked, ["routed"]);
+});
+
+test("a delivered answer links to the node's own record of it; a failed one has none", async () => {
+  const ok = await buyChecked(fakePayer(delivered).payer, "test", spec);
+  assert.equal(signalUrl(ok), `${config.nodeUrl}/engine/v1/signal/0xabc`);
+  const failed = await buyChecked(fakePayer(failedCharged, failedCharged).payer, "test", spec);
+  assert.equal(signalUrl(failed), null);
 });

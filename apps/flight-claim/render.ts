@@ -1,6 +1,6 @@
 // The claim email the passenger sends, and the evidence report behind it.
 import { config } from "../../src/config.ts";
-import { cost, txUrl, usd, type Item } from "../../src/evidence.ts";
+import { cost, signalUrl, txUrl, usd, type Item } from "../../src/evidence.ts";
 import type { Assessment, Trip } from "./trip.ts";
 
 const RULE =
@@ -75,7 +75,7 @@ export function renderReport(generatedAt: string, payer: string, trip: Trip, ass
     `|---|---|---|---|---|---|---|`,
     ...items.map(
       (i) =>
-        `| ${i.check} | ${i.finding.replaceAll("|", "\\|")} | ${feedTime(i)} | ${i.agreement} (${i.network.miner ?? `HTTP ${i.network.status}`}) | ${cost(i)} | \`${i.network.receiptHash ?? "none"}\` | ${txUrl(i) ? `[tx](${txUrl(i)})` : "none"} |`,
+        `| ${i.check} | ${i.finding.replaceAll("|", "\\|")} | ${feedTime(i)} | ${i.agreement} (${i.network.miner ?? `HTTP ${i.network.status}`}) | ${cost(i)} | \`${i.network.receiptHash ?? "none"}\` | ${[txUrl(i) && `[tx](${txUrl(i)})`, signalUrl(i) && `[node record](${signalUrl(i)})`].filter(Boolean).join(", ") || "none"} |`,
     ),
     ``,
     `Total: ${usd(total)}.`,

@@ -5,7 +5,9 @@ import { createPublicClient, erc20Abi, formatUnits, http } from "viem";
 import { config } from "../src/config.ts";
 import { createPayer, escrowBalance } from "../src/telegraph.ts";
 import { chargedWithoutAmount, settled } from "../src/evidence.ts";
-import { buildPack } from "../apps/legal/pack.ts";
+import { groupRuns, paymentsToTelegraph } from "../src/chain.ts";
+import { buildPack, parseEntity } from "../apps/legal/pack.ts";
+import { createMcpHandler } from "./mcp.ts";
 import { assess, draftClaim, validTrip, type Trip } from "../apps/flight-claim/trip.ts";
 
 const HOSTED_MAX_ENTITIES = 3;
@@ -14,6 +16,9 @@ const HOSTED_RUNS_PER_WINDOW = 5;
 const HOSTED_WINDOW_MS = 10 * 60_000;
 const HOSTED_MIN_USDC = 200_000n; // $0.20: enough for the largest run, with failed calls
 const MAX_NAME_LENGTH = 200;
+const LEDGER_CACHE_MS = 60_000;
+// When the maintainer ran the hosted demo for tests and the demo video (UTC start-time prefixes); those runs are labelled.
+const OWN_TEST_TIMES = ["2026-11-04", "2026-11-07T19", "2026-11-07T20", "2026-11-07T21"];
 
 class BadRequest extends Error {}
 class Refused extends Error {}
@@ -79,6 +84,36 @@ export function createApi({ hosted }: { hosted: boolean }) {
     return { dir: hosted ? null : dir, files };
   };
 
+  const diligence = async (input: unknown, req: IncomingMessage) => {
+    const names = (Array.isArray(input) ? input : []).map((n: unknown) => String(n).trim()).filter(Boolean);
+    if (!names.length) throw new BadRequest("Add at least one name");
+    if (names.length > maxEntities) throw new BadRequest(`At most ${maxEntities} names per run`);
+    if (names.some((n) => n.length > MAX_NAME_LENGTH)) throw new BadRequest(`Each name must be 1 to ${MAX_NAME_LENGTH} characters`);
+    for (const n of names) {
+      let parsed;
+      try {
+        parsed = parseEntity(n);
+      } catch (err) {
+        throw new BadRequest((err as Error).message);
+      }
+      if (!parsed.name) throw new BadRequest(`Each name must be 1 to ${MAX_NAME_LENGTH} characters`);
+    }
+    await allowPaidRun(req);
+    const { dir, entities } = await buildPack(createPayer(), names);
+    const items = entities.flatMap((e) => e.items);
+    const saved = readAndClear(dir, ["pack.md"]);
+    return { dir: saved.dir, entities, spent: settled(items).toString(), chargedWithoutAmount: chargedWithoutAmount(items), markdown: saved.files[0] };
+  };
+
+  let ledgerCache: { at: number; body: unknown } | null = null;
+  const ledger = async () => {
+    if (ledgerCache && Date.now() - ledgerCache.at < LEDGER_CACHE_MS) return ledgerCache.body;
+    const runs = groupRuns(await paymentsToTelegraph(address)).map((r) => ({ ...r, ownTest: !hosted || OWN_TEST_TIMES.some((t) => r.start.startsWith(t)) }));
+    const body = { address, runs, escrow: formatUnits(await escrowBalance(address), 6), source: config.blockscoutApi, ownTestTimes: OWN_TEST_TIMES, readAt: new Date().toISOString() };
+    ledgerCache = { at: Date.now(), body };
+    return body;
+  };
+
   const routes: Record<string, (req: IncomingMessage) => Promise<unknown>> = {
     "GET /api/wallet": async () => ({
       address,
@@ -88,19 +123,13 @@ export function createApi({ hosted }: { hosted: boolean }) {
       escrow: formatUnits(await escrowBalance(address), 6),
       network: config.network,
       explorerTxUrl: config.explorerTxUrl,
+      nodeUrl: config.nodeUrl,
     }),
 
-    "POST /api/diligence": async (req) => {
-      const names: string[] = ((await readJson(req)).names ?? []).map((n: unknown) => String(n).trim()).filter(Boolean);
-      if (!names.length) throw new BadRequest("Add at least one name");
-      if (names.length > maxEntities) throw new BadRequest(`At most ${maxEntities} names per run`);
-      if (names.some((n) => !n.replace(/^(person|company):/, "").trim() || n.length > MAX_NAME_LENGTH)) throw new BadRequest(`Each name must be 1 to ${MAX_NAME_LENGTH} characters`);
-      await allowPaidRun(req);
-      const { dir, entities } = await buildPack(createPayer(), names);
-      const items = entities.flatMap((e) => e.items);
-      const saved = readAndClear(dir, ["pack.md"]);
-      return { dir: saved.dir, entities, spent: settled(items).toString(), chargedWithoutAmount: chargedWithoutAmount(items), markdown: saved.files[0] };
-    },
+    // Every payment this wallet made to Telegraph, from the public explorer, grouped into runs.
+    "GET /api/ledger": ledger,
+
+    "POST /api/diligence": async (req) => diligence((await readJson(req)).names, req),
 
     // Free: the refund rule only, nothing bought.
     "POST /api/flight/check": async (req) => ({ assessment: assess(tripFrom(await readJson(req))) }),
@@ -116,7 +145,16 @@ export function createApi({ hosted }: { hosted: boolean }) {
     },
   };
 
+  // The same checks for agents, over MCP. Same limits as the page.
+  const mcp = createMcpHandler({
+    diligence,
+    flightCheck: (trip: unknown) => assess(tripFrom({ trip })),
+    ledger,
+    describeError: (err) => (err instanceof BadRequest || err instanceof Refused ? err.message : null),
+  });
+
   return async (req: IncomingMessage, res: ServerResponse) => {
+    if (req.url?.split("?")[0] === "/api/mcp") return mcp(req, res);
     const route = routes[`${req.method} ${req.url?.split("?")[0]}`];
     if (!route) return send(res, 404, { error: "Not found" });
     try {

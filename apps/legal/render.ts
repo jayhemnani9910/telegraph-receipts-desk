@@ -1,10 +1,11 @@
 // Markdown diligence pack: findings from primary sources, what the network said, and what each item cost.
 import { config } from "../../src/config.ts";
-import { cost, txUrl, usd, type Item } from "../../src/evidence.ts";
+import { cost, signalUrl, txUrl, usd, type Item } from "../../src/evidence.ts";
 import type { EntityPack } from "./pack.ts";
 
 const cell = (s: string) => s.replaceAll("|", "\\|").replaceAll("\n", " ");
-const tx = (item: Item) => (txUrl(item) ? `[tx](${txUrl(item)})` : "none");
+const tx = (item: Item) =>
+  [txUrl(item) && `[tx](${txUrl(item)})`, signalUrl(item) && `[node record](${signalUrl(item)})`].filter(Boolean).join(", ") || "none";
 
 export function renderPack(generatedAt: string, payer: string, entities: EntityPack[]): string {
   const items = entities.flatMap((e) => e.items.map((item) => ({ entity: e.name, item })));
@@ -28,7 +29,14 @@ export function renderPack(generatedAt: string, payer: string, entities: EntityP
   ];
 
   for (const entity of entities) {
-    out.push(``, `## ${entity.name} (${entity.kind})`, ``);
+    out.push(``, `## ${entity.name} (${entity.kind}${entity.birth ? `, born ${entity.birth}` : ""})`, ``);
+    out.push(`**Verdict: ${entity.verdict.level}.** ${entity.verdict.reasons.join(" ")}`, ``);
+    if (entity.owners) {
+      const owners = entity.owners.value.length
+        ? entity.owners.value.map((o) => `${o.relation} ${o.name} (LEI ${o.lei}): ${o.matches.length ? `listed, ${o.matches.slice(0, 3).map((m) => `${m.list} ${m.id} ${m.name}`).join("; ")}` : "not listed"}`).join("; ")
+        : "none reported to GLEIF";
+      out.push(`Owners, from GLEIF, screened against the same lists (free): ${cell(owners)}.`, ``);
+    }
     out.push(`| Check | Finding | Source, as of | Network answer | Cost | Proof |`, `|---|---|---|---|---|---|`);
     for (const item of entity.items) {
       const said = item.network.status === 200 ? `${item.agreement} (${item.network.miner})` : `${item.agreement}: HTTP ${item.network.status}`;

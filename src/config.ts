@@ -19,6 +19,8 @@ export const config = {
   usdc: env("USDC_ADDRESS", "0xcc194e1a843B658526D0D5C431f670028582Ae17") as `0x${string}`,
   diamond: env("DIAMOND_ADDRESS", "0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b") as `0x${string}`,
   explorerTxUrl: env("EXPLORER_TX_URL", "https://sepolia.etherscan.io/tx/"),
+  // Public explorer API with full history and no key, for the public ledger.
+  blockscoutApi: env("BLOCKSCOUT_API", "https://eth-sepolia.blockscout.com/api/v2"),
   // Spend controls, in micro-USDC (6 decimals): 10000 = $0.01
   maxPerCallUusdc: BigInt(env("MAX_PER_CALL_UUSDC", "50000")),
   maxPerRunUusdc: BigInt(env("MAX_PER_RUN_UUSDC", "1000000")),

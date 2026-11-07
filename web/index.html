@@ -85,12 +85,13 @@
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-tab="legal">Diligence pack</button>
     <button role="tab" aria-selected="false" data-tab="flight">Flight refund</button>
+    <button role="tab" aria-selected="false" data-tab="ledger">Public ledger</button>
   </nav>
 
   <div id="tab-legal">
     <section class="panel">
       <h2>Who are you checking?</h2>
-      <label for="names">One per line, up to <span id="names-limit">5</span>. Start a line with <code>person:</code> for a person; companies use their exact legal name.</label>
+      <label for="names">One per line, up to <span id="names-limit">5</span>. Start a line with <code>person:</code> for a person; companies use their exact legal name. For a person you can add <code>, dob:1952-10-07</code> (or just the year) to rule out namesakes; the birth date is never sent to the network.</label>
       <textarea id="names">Apple Inc.
 person:Vladimir Putin</textarea>
       <p class="hint">Companies: sanctions, LEI registry and latest annual report. People: sanctions. Each check is bought for $0.01 and compared with the OFAC, UN, EU and UK lists, GLEIF or SEC EDGAR.</p>
@@ -121,6 +122,15 @@ person:Vladimir Putin</textarea>
     </section>
     <div id="flight-results"></div>
   </div>
+
+  <div id="tab-ledger" hidden>
+    <section class="panel">
+      <h2>Every payment this wallet made to Telegraph</h2>
+      <p class="hint" style="margin:0">Read from the public block explorer, not from our own logs, so you can check it without trusting this page. Payments less than 5 minutes apart are shown as one run. Link to this view: <a href="#ledger">#ledger</a>.</p>
+      <div id="ledger-msg"></div>
+    </section>
+    <div id="ledger-results"></div>
+  </div>
 </main>
 
 <script>
@@ -147,6 +157,7 @@ const usd = (uusdc) => `$${(Number(uusdc || 0) / 1e6).toFixed(2)}`;
 const savedIn = (dir) => (dir ? `<span class="hint">Saved locally in <code>${esc(dir)}</code></span>` : `<span class="hint">Not kept on the server: download it now.</span>`);
 const failedCharges = (n) => (n ? `, plus ${n} failed ${n === 1 ? "call" : "calls"} whose payment stays in escrow` : "");
 let explorer = "";
+let nodeUrl = "";
 
 async function api(path, body) {
   const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -178,6 +189,7 @@ async function loadWallet() {
   try {
     const w = await api("/api/wallet");
     explorer = w.explorerTxUrl;
+    nodeUrl = w.nodeUrl;
     if (w.hosted) showHosted(w);
     $("wallet").innerHTML = `Wallet <span class="mono">${esc(w.address.slice(0, 6))}…${esc(w.address.slice(-4))}</span> · <b>${Number(w.usdc).toFixed(2)}</b> test USDC + ${Number(w.escrow).toFixed(2)} in escrow · Ethereum Sepolia`;
   } catch (err) {
@@ -186,13 +198,43 @@ async function loadWallet() {
 }
 
 // Tabs
-document.querySelectorAll("nav button").forEach((b) =>
-  b.addEventListener("click", () => {
-    document.querySelectorAll("nav button").forEach((x) => x.setAttribute("aria-selected", x === b));
-    $("tab-legal").hidden = b.dataset.tab !== "legal";
-    $("tab-flight").hidden = b.dataset.tab !== "flight";
-  }),
-);
+function openTab(tab) {
+  document.querySelectorAll("nav button").forEach((x) => x.setAttribute("aria-selected", x.dataset.tab === tab));
+  for (const t of ["legal", "flight", "ledger"]) $(`tab-${t}`).hidden = t !== tab;
+  if (tab === "ledger") loadLedger();
+}
+document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
+
+// Public ledger
+async function loadLedger() {
+  message("ledger-msg", "info", "Reading the block explorer…");
+  try {
+    const l = await api("/api/ledger");
+    const outside = l.runs.filter((r) => !r.ownTest);
+    const total = l.runs.reduce((s, r) => s + Number(r.uusdc), 0);
+    const checks = l.runs.reduce((s, r) => s + r.payments.length, 0);
+    message("ledger-msg", "", "");
+    const rows = [...l.runs].reverse().map((r) => `<tr>
+      <td>${esc(r.start.slice(0, 16).replace("T", " "))} UTC</td>
+      <td>${r.payments.length}</td>
+      <td>${usd(r.uusdc)}</td>
+      <td>${r.ownTest ? '<span class="badge unconfirmed">maintainer test</span>' : '<span class="badge confirmed">visitor run</span>'}</td>
+      <td>${r.payments.map((p, i) => `<a href="${esc(explorer + p.tx)}" target="_blank" rel="noopener">${i + 1}</a>`).join(" ")}</td>
+    </tr>`);
+    $("ledger-results").innerHTML = `<section class="panel">
+      <p class="summary"><b>${l.runs.length}</b> runs, <b>${checks}</b> paid checks, <b>${usd(total)}</b> in test USDC, from wallet
+        <a class="mono" href="${esc(explorer.replace("/tx/", "/address/") + l.address)}" target="_blank" rel="noopener">${esc(l.address.slice(0, 6))}…${esc(l.address.slice(-4))}</a>.
+        ${outside.length} ${outside.length === 1 ? "run is" : "runs are"} outside the maintainer's test times (UTC: ${esc(l.ownTestTimes.join(", "))}). Escrow now: ${Number(l.escrow).toFixed(2)} USDC.</p>
+      <p class="hint">"Visitor run" means it started outside those times; it could still be the maintainer. Payments that failed stay in escrow and are listed too. Source: <a href="${esc(l.source)}" target="_blank" rel="noopener">Blockscout</a>, read ${esc(l.readAt.slice(0, 16).replace("T", " "))} UTC.</p>
+      <div class="table"><table>
+        <tr><th>Run started</th><th>Payments</th><th>Total</th><th>Who</th><th>Payment txs</th></tr>
+        ${rows.join("") || '<tr><td colspan="5">No payments yet.</td></tr>'}
+      </table></div>
+    </section>`;
+  } catch (err) {
+    message("ledger-msg", "bad", esc(err.message));
+  }
+}
 
 // Shared results table: one row per paid check.
 function checksTable(items, withSource) {
@@ -201,7 +243,10 @@ function checksTable(items, withSource) {
     const badge = i.agreement === "network failed" ? "failed" : i.agreement;
     const said = n.status === 200 ? esc(n.miner) : `HTTP ${n.status}`;
     const cost = n.amountUusdc ? usd(n.amountUusdc) : n.charged ? "credited to escrow" : "$0.00";
-    const proof = n.txHash ? `<a href="${esc(explorer + n.txHash)}" target="_blank" rel="noopener">tx</a>` : "none";
+    const proof = [
+      n.txHash && `<a href="${esc(explorer + n.txHash)}" target="_blank" rel="noopener">tx</a>`,
+      n.signalHash && `<a href="${esc(`${nodeUrl}/engine/v1/signal/${n.signalHash}`)}" target="_blank" rel="noopener" title="Telegraph's own record of this answer">node record</a>`,
+    ].filter(Boolean).join(" · ") || "none";
     const receipt = n.receiptHash ? `<span class="mono" title="${esc(n.receiptHash)}">${esc(n.receiptHash.slice(0, 10))}…</span>` : "none";
     return `<tr>
       <td>${esc(i.check)}</td>
@@ -221,6 +266,13 @@ function checksTable(items, withSource) {
 }
 
 // Diligence
+const VERDICT_BADGE = { CLEAR: "confirmed", REVIEW: "failed", HIT: "contradicted" };
+function ownersLine(e) {
+  if (e.ownersNote) return `<p class="hint">${esc(e.ownersNote)}</p>`;
+  if (!e.owners) return "";
+  const list = e.owners.value.map((o) => `${esc(o.relation)} ${esc(o.name)}: ${o.matches.length ? `<b>listed</b> (${esc(o.matches[0].list)} ${esc(o.matches[0].id)})` : "not listed"}`);
+  return `<p class="hint">Owners reported to GLEIF, screened against the same lists (free): ${list.join("; ") || "none reported"}.</p>`;
+}
 const names = () => $("names").value.split("\n").map((s) => s.trim()).filter(Boolean);
 function estimate() {
   const n = names();
@@ -242,7 +294,11 @@ $("run-legal").addEventListener("click", async () => {
     message("legal-msg", contradicted ? "bad" : "ok",
       `${r.entities.length} ${r.entities.length === 1 ? "entity" : "entities"}, ${items.length} paid checks, ${usd(r.spent)} spent${failedCharges(r.chargedWithoutAmount)}. ${contradicted} network ${contradicted === 1 ? "answer" : "answers"} contradicted the primary source.`);
     $("legal-results").innerHTML =
-      r.entities.map((e) => `<section class="panel"><h2>${esc(e.name)} <span class="hint">(${esc(e.kind)})</span></h2>${checksTable(e.items, true)}</section>`).join("") +
+      r.entities.map((e) => `<section class="panel">
+        <h2>${esc(e.name)} <span class="hint">(${esc(e.kind)}${e.birth ? `, born ${esc(e.birth)}` : ""})</span> <span class="badge ${VERDICT_BADGE[e.verdict.level]}">${esc(e.verdict.level)}</span></h2>
+        <p class="summary">${esc(e.verdict.reasons.join(" "))}</p>
+        ${ownersLine(e)}
+        ${checksTable(e.items, true)}</section>`).join("") +
       `<section class="panel"><div class="actions" style="margin:0"><button class="secondary" id="dl-pack">Download pack (Markdown)</button>${savedIn(r.dir)}</div></section>`;
     $("dl-pack").addEventListener("click", () => download("diligence-pack.md", r.markdown, "text/markdown"));
     loadWallet();
@@ -305,7 +361,7 @@ $("claim-flight").addEventListener("click", async () => {
   }
 });
 
-loadWallet();
+loadWallet().then(() => { if (location.hash === "#ledger") openTab("ledger"); });
 </script>
 </body>
 </html>

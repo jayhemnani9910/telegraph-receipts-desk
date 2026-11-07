@@ -4,6 +4,16 @@ All notable changes to this project are written down here. The format follows [K
 
 ## [Unreleased]
 
+### Added
+
+- One verdict per entity in the diligence pack: HIT, REVIEW or CLEAR, with the reasons.
+- Optional birth date for people (`person:Name, dob:1952-10-07`) to rule out namesakes; it is never sent to the network.
+- Near-spelling matches (one letter off in a long word) shown for review.
+- Parent companies reported to GLEIF are screened against the same sanctions lists.
+- A link to the node's own record of every answer (`/engine/v1/signal/<hash>`).
+- Public ledger tab and `GET /api/ledger`: every payment the wallet made to Telegraph, read from Blockscout.
+- MCP server at `/api/mcp` with `diligence_pack`, `flight_refund_eligibility` and `public_ledger`. New dependencies: `@modelcontextprotocol/sdk` and `zod`.
+
 ## [0.2.0] - 2026-11-07
 
 ### Added

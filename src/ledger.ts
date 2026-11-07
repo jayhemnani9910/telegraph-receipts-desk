@@ -12,6 +12,8 @@ export type LedgerEntry = {
   query: string;
   status: number;
   receipt_hash: string | null;
+  // The node's own record of the answer: GET /engine/v1/signal/{hash}. Missing when the call failed.
+  signal_hash?: string | null;
   tx_hash: string | null;
   intent: string | null;
   miner: string | null;
@@ -27,6 +29,7 @@ export function record(label: string, query: string, result: AskResult): LedgerE
     query,
     status: result.status,
     receipt_hash: result.receipt?.receipt_hash ?? null,
+    signal_hash: result.body?.signal_hash ?? null,
     tx_hash: result.receipt?.tx_hash ?? result.payment?.transaction ?? null,
     intent: result.receipt?.intent ?? result.body?.intent ?? null,
     miner: result.receipt?.miner ?? result.body?.miner_id ?? null,
