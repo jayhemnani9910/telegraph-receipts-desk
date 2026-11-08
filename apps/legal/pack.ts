@@ -70,7 +70,9 @@ const LEI_PATTERN = /\b[A-Z0-9]{18}[0-9]{2}\b/;
 
 // Miners asked directly before the routed ask, checked on 2026-11-01: on V2 routing these Intents often reached
 // miners that could not answer. IDs can change; a miner that is gone or cannot take the request costs nothing.
-const SANCTIONS_MINERS = ["710637", "4433"]; // Sanctions Name Evidence (clear yes/no, checked 2026-11-04), LiveCert
+// Sanctions Name Evidence (clear yes/no, checked 2026-11-04); Counterproof Sanctions Screener, another team's miner
+// (US, UN, EU and UK; 3 of 3 right on 2026-11-08); LiveCert.
+const SANCTIONS_MINERS = ["710637", "731002", "4433"];
 // TxLens, then DataWire. Trial on 2026-11-04 with six US, UK and German companies: 14 of 14 right against 9 of 12.
 const REGISTRY_MINERS = ["9002", "7393"];
 const FILING_MINERS = ["77131"]; // Filing Window, checked 2026-11-04: wants the exact SEC name and explicit dates

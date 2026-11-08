@@ -81,6 +81,7 @@ New to Telegraph? The [tutorial](docs/tutorial.md) goes through each step with s
 
 - **Answer quality varies.** A wrong answer is reported as `contradicted`. A miner that answers 200 with a useless answer still counts as delivered and is billed.
 - **Registry answers rest on a small trial.** I ask TxLens first because it got 14 of 14 calls right across six US, UK and German companies on Nov 4, 2026, against 9 of 12 for DataWire, which is now the backup. That's a small sample and can change.
+- **Sanctions miners.** Sanctions Name Evidence (710637) is asked first. Counterproof Sanctions Screener (731002), run by another hackathon team, is the backup: it answered 3 of 3 test names correctly on Nov 8, 2026.
 - **SEC filings have one named miner.** Filing Window (77131) is asked first, and routing is the only fallback.
 - **Named miners can change.** IDs are hard-coded in `apps/legal/pack.ts` and `apps/flight-claim/trip.ts`.
 - **Airport-level only.** The flight app checks airport disruption from the FAA, not your specific flight, and US airports only. You enter your flight's new times yourself. The refund right does not depend on the airport check.

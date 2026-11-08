@@ -12,6 +12,7 @@ All notable changes to this project are written down here. The format follows [K
 - Parent companies reported to GLEIF are screened against the same sanctions lists.
 - A link to the node's own record of every answer (`/engine/v1/signal/<hash>`).
 - Public ledger tab and `GET /api/ledger`: every payment the wallet made to Telegraph, read from Blockscout.
+- Counterproof Sanctions Screener (miner 731002, another team's) as the backup sanctions miner.
 - MCP server at `/api/mcp` with `diligence_pack`, `flight_refund_eligibility` and `public_ledger`. New dependencies: `@modelcontextprotocol/sdk` and `zod`.
 
 ## [0.2.0] - 2026-11-07
